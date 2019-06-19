@@ -47,12 +47,9 @@ class Layer(object):
     def __init__(
             self,
             scope=None,
-            nlags=None,
             input_dims=None,  # this can be a list up to 3-dimensions
             filter_dims=None,
             output_dims=None,
-            my_num_inputs=None,  # this is for convsep
-            my_num_outputs=None,
             activation_func='relu',
             normalize_weights=0,
             weights_initializer='normal',
@@ -65,12 +62,18 @@ class Layer(object):
 
         Args:
             scope (str): name scope for variables and operations in layer
-            input_dims (int or list of ints): dimensions of input data
-            filter_dims (int or list of ints): dimensions of input data
-            output_dims (int or list of ints): dimensions of output data
-            activation_func (str, optional): pointwise function applied to  
+            input_dims (int or list of ints): size (and dimensionality) of the inputs to the layer. Should be in the
+                form of: [# temporal lags, # space dim1, # space dim2, other dimensions]
+                Thus, must be list: length 1 means temporal only, length 2 means one time and one space, etc
+                Note that time-lag dimension is important for d2t and d2xt regularization, and spatial dimensions
+                are important for convolutions as well as regularization of d2x and d2xt. max_filt and max_space also
+                Default is none, which means will be determined at the build time
+            output_dims ((int or list of ints): size of outputs of layer, arranged as multi-dimensional list as well
+            filter_dims (int or list of ints): dimensions of filters: if left blank will be determined by input_dims,
+                but might be different for convolutional reasons (not implemented in layer, but its children)
+            activation_func (str, optional): pointwise function applied to
                 output of affine transformation
-                ['relu'] | 'sigmoid' | 'tanh' | 'identity' or 'lin' | 'softplus' |
+                ['relu'] | 'sigmoid' | 'tanh' | 'identity' or 'lin' | 'softplus' | 'leaky_relu' |
                 'elu' | 'quad' | 'requ' (rect quadratic)
             normalize_weights (int): 1 to normalize weights 0 otherwise
                 [0] | 1
@@ -112,7 +115,10 @@ class Layer(object):
             raise TypeError('Must specify both input and output dimensions')
 
         self.scope = scope
-        self.nlags = nlags
+
+        # Parse input and filter dimensions: note that internal variable input_dims will be 3-D, defined by
+        #    [# of non-spatial elements, # space dim1, #space dim2]. Any additional non-spatial dims will be
+        #    broken up in separarte internal variable 'internal dims', which can be list of one or greater
 
         # Make input, output, and filter sizes explicit
         if isinstance(input_dims, list):
@@ -128,25 +134,27 @@ class Layer(object):
             num_outputs = output_dims
             output_dims = [1, output_dims, 1]
 
-        self.input_dims = input_dims[:]
+        # Internal dims allows for the first dimension to be multiplexed into many (e.g., filters x time lags)
+        # note that first dim of internal_dims will always be time lags unless length is 1
+        self.internal_dims = [input_dims[0]]  # this is by default number of lags (or filters from previous layer)
+        self.input_dims = input_dims[:3].copy()
+        if len(input_dims) > 3:
+            self.internal_dims += input_dims[3:]
+            self.input_dims[0] = np.prod(self.internal_dims)
+
         self.output_dims = output_dims[:]
         # default to have N filts for N outputs in base layer class
-
-        # take care of nlags
-        if self.nlags is not None:
-            self.input_dims[0] *= self.nlags
+        print('layer', scope, self.input_dims, self.internal_dims)
 
         if filter_dims is None:
-            filter_dims = self.input_dims
+            if len(self.internal_dims) == 1:
+                filter_dims = self.input_dims
+            else:
+                filter_dims = [self.internal_dims[0], self.input_dims[1], self.input_dims[2]] + self.internal_dims[1:]
 
         self.filter_dims = filter_dims[:]
 
-        if my_num_inputs is not None:
-            num_inputs = my_num_inputs   # this is for convsep
-        else:
-            num_inputs = np.prod(self.filter_dims)
-        if my_num_outputs is not None:
-            num_outputs = my_num_outputs   # this is for convsep
+        num_inputs = np.prod(self.filter_dims)
 
         self.num_filters = num_outputs
 
@@ -388,11 +396,11 @@ class ConvLayer(Layer):
     def __init__(
             self,
             scope=None,
-            nlags=None,
             input_dims=None,   # this can be a list up to 3-dimensions
             num_filters=None,
             filter_dims=None,  # this can be a list up to 3-dimensions
             shift_spacing=1,
+            dilation=1,
             activation_func='relu',
             normalize_weights=0,
             weights_initializer='normal',
@@ -449,8 +457,8 @@ class ConvLayer(Layer):
             else:
                 filter_dims = [filter_dims, 1, 1]
 
-        if nlags is not None:
-            filter_dims[0] *= nlags
+        #if nlags is not None:
+        #    filter_dims[0] *= nlags
 
         # If output dimensions already established, just strip out num_filters
         if isinstance(num_filters, list):
@@ -465,7 +473,6 @@ class ConvLayer(Layer):
 
         super(ConvLayer, self).__init__(
                 scope=scope,
-                nlags=nlags,
                 input_dims=input_dims,
                 filter_dims=filter_dims,
                 output_dims=num_filters,   # Note difference from layer
@@ -557,7 +564,6 @@ class ConvXYLayer(Layer):
     def __init__(
             self,
             scope=None,
-            nlags=None,
             input_dims=None,  # this can be a list up to 3-dimensions
             num_filters=None,
             filter_dims=None,  # this can be a list up to 3-dimensions
@@ -628,7 +634,6 @@ class ConvXYLayer(Layer):
 
         super(ConvXYLayer, self).__init__(
             scope=scope,
-            nlags=nlags,
             input_dims=input_dims,
             filter_dims=filter_dims,
             output_dims=num_filters,  # Note difference from layer
@@ -731,7 +736,6 @@ class SepLayer(Layer):
     def __init__(
             self,
             scope=None,
-            nlags=None,
             input_dims=None,    # this can be a list up to 3-dimensions
             output_dims=None,
             activation_func='relu',
@@ -780,14 +784,14 @@ class SepLayer(Layer):
         # Determine filter dimensions (first dim + space_dims)
         num_space = input_dims[1]*input_dims[2]
 
-        if nlags is not None:
-            filter_dims = [input_dims[0] * nlags + num_space, 1, 1]
-        else:
-            filter_dims = [input_dims[0] + num_space, 1, 1]
+        #if nlags is not None:
+        #    filter_dims = [input_dims[0] * nlags + num_space, 1, 1]
+        #else:
+        filter_dims = [input_dims[0] + num_space, 1, 1]
 
         super(SepLayer, self).__init__(
                 scope=scope,
-                nlags=nlags,
+                #nlags=nlags,
                 input_dims=input_dims,
                 filter_dims=filter_dims,
                 output_dims=output_dims,
@@ -1053,7 +1057,7 @@ class ConvSepLayer(Layer):
     def __init__(
             self,
             scope=None,
-            nlags=None,
+            #nlags=None,
             input_dims=None,    # this can be a list up to 3-dimensions
             num_filters=None,
             filter_dims=None,  # this can be a list up to 3-dimensions
@@ -1111,8 +1115,8 @@ class ConvSepLayer(Layer):
             else:
                 filter_dims = [filter_dims, 1, 1]
 
-        if nlags is not None:
-            filter_dims[0] *= nlags
+        #if nlags is not None:
+        #    filter_dims[0] *= nlags
         # Determine filter dimensions (first dim + space_dims)
         num_space = filter_dims[1]*filter_dims[2]
         num_input_dims_convsep = filter_dims[0]+num_space
@@ -1130,7 +1134,7 @@ class ConvSepLayer(Layer):
 
         super(ConvSepLayer, self).__init__(
                 scope=scope,
-                nlags=nlags,
+                #nlags=nlags,
                 input_dims=input_dims,
                 filter_dims=filter_dims,
                 output_dims=num_filters,     # ! check this out... output_dims=num_filters?
@@ -1427,7 +1431,7 @@ class AddLayer(Layer):
     def __init__(
             self,
             scope=None,
-            nlags=None,
+            #nlags=None,
             input_dims=None,  # this can be a list up to 3-dimensions
             output_dims=None,
             activation_func='relu',
@@ -1470,7 +1474,7 @@ class AddLayer(Layer):
 
         super(AddLayer, self).__init__(
                 scope=scope,
-                nlags=nlags,
+                #nlags=nlags,
                 input_dims=input_dims,
                 filter_dims=input_dims,
                 output_dims=num_outputs,
@@ -1570,7 +1574,7 @@ class SpikeHistoryLayer(Layer):
     def __init__(
             self,
             scope=None,
-            nlags=None,
+            #nlags=None,
             input_dims=None,  # this can be a list up to 3-dimensions
             output_dims=None,
             activation_func='relu',
@@ -1609,7 +1613,7 @@ class SpikeHistoryLayer(Layer):
 
         super(SpikeHistoryLayer, self).__init__(
                 scope=scope,
-                nlags=nlags,
+                #nlags=nlags,
                 input_dims=input_dims,
                 filter_dims=filter_dims,
                 output_dims=output_dims,
@@ -1674,7 +1678,7 @@ class BiConvLayer(ConvLayer):
     def __init__(
             self,
             scope=None,
-            nlags=None,
+            #nlags=None,
             input_dims=None,  # this can be a list up to 3-dimensions
             num_filters=None,
             filter_dims=None,  # this can be a list up to 3-dimensions
@@ -1719,7 +1723,7 @@ class BiConvLayer(ConvLayer):
 
         super(BiConvLayer, self).__init__(
             scope=scope,
-            nlags=nlags,
+            #nlags=nlags,
             input_dims=input_dims,
             num_filters=num_filters,
             filter_dims=filter_dims,
@@ -1806,7 +1810,7 @@ class ReadoutLayer(Layer):
     def __init__(
             self,
             scope=None,
-            nlags=None,
+            #nlags=None,
             input_dims=None,    # this can be a list up to 3-dimensions
             output_dims=None,
             activation_func='relu',
@@ -1853,7 +1857,7 @@ class ReadoutLayer(Layer):
 
         super(ReadoutLayer, self).__init__(
                 scope=scope,
-                nlags=nlags,
+                #nlags=nlags,
                 input_dims=input_dims,
                 filter_dims=input_dims,
                 output_dims=output_dims,
@@ -1886,7 +1890,7 @@ class ConvLayerLNL(ConvLayer):
     def __init__(
             self,
             scope=None,
-            nlags=None,
+            #nlags=None,
             input_dims=None,  # this can be a list up to 3-dimensions
             num_filters=None,
             filter_dims=None,  # this can be a list up to 3-dimensions
@@ -1931,7 +1935,7 @@ class ConvLayerLNL(ConvLayer):
 
         super(ConvLayerLNL, self).__init__(
             scope=scope,
-            nlags=nlags,
+            #nlags=nlags,
             input_dims=input_dims,
             filter_dims=filter_dims,
             output_dims=num_filters,  # Note difference from layer
@@ -2023,7 +2027,7 @@ class HadiReadoutLayer(Layer):
     def __init__(
             self,
             scope=None,
-            nlags=None,
+            #nlags=None,
             input_dims=None,  # this can be a list up to 3-dimensions
             num_filters=None,
             xy_out=None,
@@ -2072,7 +2076,7 @@ class HadiReadoutLayer(Layer):
 
         super(HadiReadoutLayer, self).__init__(
             scope=scope,
-            nlags=nlags,
+            #nlags=nlags,
             input_dims=input_dims,
             filter_dims=filter_dims,
             output_dims=num_filters,  # Note difference from layer

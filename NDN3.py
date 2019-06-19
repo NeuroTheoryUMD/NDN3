@@ -13,7 +13,6 @@ import tensorflow as tf
 
 from ffnetwork import FFNetwork
 from ffnetwork import SideNetwork
-#from .network import Network
 from NDNutils import concatenate_input_dims
 
 #from tlayer import *
@@ -1936,6 +1935,7 @@ class NDN(object):
 
         """
 
+        import sys
         import dill
 
         tmp_ndn = self.copy_model()
