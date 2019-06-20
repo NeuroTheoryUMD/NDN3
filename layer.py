@@ -144,7 +144,7 @@ class Layer(object):
 
         self.output_dims = output_dims[:]
         # default to have N filts for N outputs in base layer class
-        print('layer', scope, self.input_dims, self.internal_dims)
+        #print('layer', scope, self.input_dims, self.internal_dims)
 
         if filter_dims is None:
             if len(self.internal_dims) == 1:
@@ -488,8 +488,7 @@ class ConvLayer(Layer):
         # ConvLayer-specific properties
         self.shift_spacing = shift_spacing
         self.num_shifts = num_shifts
-        # Changes in properties from Layer - note this is implicitly
-        # multi-dimensional
+        # Changes in properties from Layer - note this is implicitly multi-dimensional
         self.output_dims = [num_filters] + num_shifts[:]
     # END ConvLayer.__init__
 

@@ -172,10 +172,8 @@ class NDN(object):
             if self.network_list[nn]['ffnet_n'] is not None:
                 ffnet_n = self.network_list[nn]['ffnet_n']
                 for mm in ffnet_n:
-                    assert mm <= self.num_networks, \
-                        'Too many ffnetworks referenced.'
-                    # print('network %i:' % nn, mm, input_dims_measured,
-                    # self.networks[mm].layers[-1].output_dims )
+                    assert mm <= self.num_networks, 'Too many ffnetworks referenced.'
+                    #print('network %i:' % nn, mm, input_dims_measured, self.networks[mm].layers[-1].output_dims )
                     input_dims_measured = concatenate_input_dims(
                         input_dims_measured,
                         self.networks[mm].layers[-1].output_dims)
@@ -1949,7 +1947,7 @@ class NDN(object):
         if not os.path.isdir(os.path.dirname(save_file)):
             os.makedirs(os.path.dirname(save_file))
 
-        with file(save_file, 'wb') as f:
+        with open(save_file, 'wb') as f:
             dill.dump(tmp_ndn, f)
         print('Model pickled to %s' % save_file)
 
@@ -1971,7 +1969,7 @@ class NDN(object):
         if not os.path.isfile(save_file):
             raise ValueError(str('%s is not a valid filename' % save_file))
 
-        with file(save_file, 'rb') as f:
+        with open(save_file, 'rb') as f:
             return dill.load(f)
 
     @classmethod
