@@ -1677,10 +1677,10 @@ class BiConvLayer(ConvLayer):
     def __init__(
             self,
             scope=None,
-            #nlags=None,
             input_dims=None,  # this can be a list up to 3-dimensions
             num_filters=None,
             filter_dims=None,  # this can be a list up to 3-dimensions
+            include_reflect=True,
             shift_spacing=1,
             activation_func='relu',
             normalize_weights=0,
@@ -1697,6 +1697,7 @@ class BiConvLayer(ConvLayer):
             input_dims (int or list of ints): dimensions of input data
             num_filters (int): number of convolutional filters in layer
             filter_dims (int or list of ints): dimensions of input data
+            include_reflect (boolean): doubles number of filters -> includes reflection filters
             shift_spacing (int): stride of convolution operation
             activation_func (str, optional): pointwise function applied to
                 output of affine transformation
@@ -1722,7 +1723,6 @@ class BiConvLayer(ConvLayer):
 
         super(BiConvLayer, self).__init__(
             scope=scope,
-            #nlags=nlags,
             input_dims=input_dims,
             num_filters=num_filters,
             filter_dims=filter_dims,
@@ -1737,9 +1737,13 @@ class BiConvLayer(ConvLayer):
             log_activations=log_activations)
 
         # BiConvLayer-specific modifications
+        self.include_reflect = include_reflect
         self.num_shifts[0] = self.num_shifts[0]
         self.output_dims[0] = self.num_filters*2
         self.output_dims[1] = int(self.num_shifts[0]/2)
+        if include_reflect:
+            self.output_dims[0] *= 2
+            print('Reflecting:', self.output_dims)
     # END BiConvLayer.__init__
 
     def build_graph(self, inputs, params_dict=None, use_dropout=False):
@@ -1757,7 +1761,7 @@ class BiConvLayer(ConvLayer):
             # [space-2, space-1, lags, and num_examples]
             shaped_input = tf.reshape(inputs, input_dims)
 
-            # Reshape weights (4:D:
+            # Reshape weight-dims (4:D):
             conv_filter_dims = [self.filter_dims[2], self.filter_dims[1],
                                 self.filter_dims[0], self.num_filters]
 
@@ -1771,7 +1775,20 @@ class BiConvLayer(ConvLayer):
             else:
                 w_pn = w_p
 
-            ws_conv = tf.reshape(w_pn, conv_filter_dims)
+            if self.include_reflect:
+                transform_mat = np.kron(np.flipud(np.eye(self.filter_dims[1])), np.eye(self.filter_dims[0]))
+                flip_sp_dims = tf.constant(transform_mat, dtype='float32')
+                w_c = tf.concat([w_pn, tf.matmul(flip_sp_dims, w_pn)], 1)
+
+                biases = tf.concat([self.biases_var, self.biases_var], 1)
+                ei_mask = tf.concat([self.ei_mask_var, self.ei_mask_var], 0)
+                conv_filter_dims[3] *= 2
+            else:
+                w_c = w_pn
+                biases = self.biases_var
+                ei_mask = self.ei_mask_var
+
+            ws_conv = tf.reshape(w_c, conv_filter_dims)
 
             # Make strides list
             strides = [1, 1, 1, 1]
@@ -1781,10 +1798,10 @@ class BiConvLayer(ConvLayer):
                 strides[2] = self.shift_spacing
 
             _pre = tf.nn.conv2d(shaped_input, ws_conv, strides, padding='SAME')
-            pre = tf.add(_pre, self.biases_var)
+            pre = tf.add(_pre, biases)
 
             if self.ei_mask_var is not None:
-                post = tf.multiply(self._apply_act_func(pre), self.ei_mask_var)
+                post = tf.multiply(self._apply_act_func(pre), ei_mask)
             else:
                 post = self._apply_act_func(pre)
 
@@ -1793,9 +1810,12 @@ class BiConvLayer(ConvLayer):
             right_post = tf.slice(post, [0, 0, self.output_dims[1], 0],
                              [-1, -1, self.output_dims[1], -1])
 
-            self.outputs = tf.reshape(tf.concat([left_post, right_post], axis=3),
-                                      [-1, self.num_filters * self.num_shifts[0] * self.num_shifts[1]])
-
+            if self.include_reflect:
+                self.outputs = tf.reshape(tf.concat([left_post, right_post], axis=3),
+                                        [-1, np.prod(self.output_dims)])
+            else:
+                self.outputs = tf.reshape(tf.concat([left_post, right_post], axis=3),
+                                        [-1, self.num_filters * self.num_shifts[0] * self.num_shifts[1]])
         if self.log:
             tf.summary.histogram('act_pre', pre)
             tf.summary.histogram('act_post', post)
