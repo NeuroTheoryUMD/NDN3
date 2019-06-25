@@ -1680,7 +1680,7 @@ class BiConvLayer(ConvLayer):
             input_dims=None,  # this can be a list up to 3-dimensions
             num_filters=None,
             filter_dims=None,  # this can be a list up to 3-dimensions
-            include_reflect=True,
+            include_reflect=False,
             shift_spacing=1,
             activation_func='relu',
             normalize_weights=0,
@@ -1810,12 +1810,8 @@ class BiConvLayer(ConvLayer):
             right_post = tf.slice(post, [0, 0, self.output_dims[1], 0],
                              [-1, -1, self.output_dims[1], -1])
 
-            if self.include_reflect:
-                self.outputs = tf.reshape(tf.concat([left_post, right_post], axis=3),
-                                        [-1, np.prod(self.output_dims)])
-            else:
-                self.outputs = tf.reshape(tf.concat([left_post, right_post], axis=3),
-                                        [-1, self.num_filters * self.num_shifts[0] * self.num_shifts[1]])
+            self.outputs = tf.reshape(tf.concat([left_post, right_post], axis=3), [-1, np.prod(self.output_dims)])
+
         if self.log:
             tf.summary.histogram('act_pre', pre)
             tf.summary.histogram('act_post', post)
