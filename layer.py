@@ -365,10 +365,26 @@ class Layer(object):
 
             if self.normalize_weights > 0:
                 w_pn = tf.nn.l2_normalize(w_p, axis=0)
+                #w_pn = self._normalize_weights(self.weights_var)
+
             else:
                 w_pn = w_p
 
             return self.reg.define_reg_loss(w_pn)
+
+    #def _normalize_weights(self, ws):
+    #    """"Normalize weights as dictated by normalize_variable"""
+    #    if self.normalize_weights > 0:
+    #        wnorms = tf.maximum(tf.sqrt(tf.reduce_sum(tf.square(ws), axis=0)), 1e-8)
+    #        ws_norm = tf.divide(ws, wnorms)
+            # another way of doing this: find the norm along axis=0, then find aaa = np.where(ws_norm > 0) and
+            # only divide ws with ws_norm in those indices (because the rest of the indices are zero vectors)
+    #    else:
+            # ws = tf.identity(self.weights_var)
+    #        ws_norm = ws
+    #return ws_norm
+
+    # END Layer._normalize_weights
 
     def set_regularization(self, reg_type, reg_val):
         """Wrapper function for setting regularization"""

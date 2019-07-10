@@ -131,7 +131,8 @@ def filtered_eval_model(
 
     if data_filters is None:
         inds = test_indxs
-        assert ndn_mod.filter_data is None, 'Must include data_filter given model history.'
+        if ndn_mod.filter_data is None:
+            print('This should [probably] include data_filter given model history.')
     else:
         inds = np.intersect1d(test_indxs, np.where(data_filters[:, int(unit_number)] > 0))
 
