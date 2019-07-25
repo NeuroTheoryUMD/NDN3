@@ -197,12 +197,10 @@ def spatial_spread(filters, axis=0):
 # END spatial_spread
 
 
-def plot_filters(ndn_mod, tbasis_select=-1):
+def compute_spatiotemporal_filters(ndn_mod, tbasis_select=-1):
 
     # Check to see if there is a temporal layer first
     if np.prod(ndn_mod.networks[0].layers[0].filter_dims[1:]) == 1:
-        plt.plot(ndn_mod.networks[0].layers[0].weights)
-        plt.title('Temporal basis')
         if ndn_mod.networks[0].layers[1].filter_dims[2] == 1:
             ks = tbasis_recover_filters(ndn_mod)
             num_lags = ndn_mod.networks[0].layers[0].filter_dims[0]
@@ -212,9 +210,10 @@ def plot_filters(ndn_mod, tbasis_select=-1):
             kraw = np.reshape(ndn_mod.networks[0].layers[1].weights.copy(),
                               [dims[2], dims[1], dims[0], ndn_mod.networks[0].layers[1].weights.shape[1]])
             if tbasis_select == -1:
-                ks = np.reshape(np.sum(kraw, axis=2), [dims[1]*dims[2], ndn_mod.networks[0].layers[1].weights.shape[1]])
+                ks = np.reshape(np.sum(kraw, axis=2),
+                                [dims[1] * dims[2], ndn_mod.networks[0].layers[1].weights.shape[1]])
             else:
-                ks = np.reshape(kraw[:,:, tbasis_select, :],
+                ks = np.reshape(kraw[:, :, tbasis_select, :],
                                 [dims[1] * dims[2], ndn_mod.networks[0].layers[1].weights.shape[1]])
             # repurpose variables for just displaying spatial components
             num_lags = ndn_mod.networks[0].layers[1].filter_dims[1]
@@ -228,6 +227,41 @@ def plot_filters(ndn_mod, tbasis_select=-1):
         num_lags = ndn_mod.networks[0].layers[0].filter_dims[2]
 
     num_filters = ks.shape[1]
+
+    return ks
+# END compute_spatiotemporal_filters
+
+
+def plot_filters(ndn_mod=None, filters=None, filter_dims=None, tbasis_select=-1, flipxy=False):
+    """Throw in NDN_mod to do defaults. Can also through in ks directly, but must be either 2-d (weights x filter)
+    with filter_dims provided, or 3-d (num_lags, num_space, num_filt)"""
+
+    temporal_layer_present = False
+    ks = filters
+    if ndn_mod is None:
+        assert ks is not None, 'Must supply filters or ndn_mod'
+        if filter_dims is not None:
+            num_lags = filter_dims[0]
+            filter_width = filter_dims[1]
+            num_filters = ks.shape[-1]
+        else:
+            assert len(ks.shape) == 3, 'filter dims must be provided or ks must be reshaped into 3d'
+            num_lags = ks.shape[1]
+            filter_width = ks.shape[0]
+            num_filters = ks.shape[2]
+    else:
+        ks = compute_spatiotemporal_filters(ndn_mod=ndn_mod, tbasis_select=tbasis_select)
+        num_lags, filter_width = ndn_mod.networks[0].layers[0].filter_dims[:2]
+        num_filters = ks.shape[1]
+        if np.prod(ndn_mod.networks[0].layers[0].filter_dims[1:]) == 1:
+            temporal_layer_present = True
+            filter_width = ndn_mod.networks[0].layers[1].filter_dims[1]
+
+    if temporal_layer_present:
+        plt.plot(ndn_mod.networks[0].layers[0].weights)
+        plt.title('Temporal bases')
+
+    ks = np.reshape(ks, [num_lags * filter_width, num_filters])
 
     if num_filters/10 == num_filters//10:
         cols = 10
@@ -247,9 +281,11 @@ def plot_filters(ndn_mod, tbasis_select=-1):
     fig.set_size_inches(18 / 6 * cols, 7 / 4 * rows)
     for nn in range(num_filters):
         ax = plt.subplot(rows, cols, nn + 1)
-        plt.imshow(np.transpose(np.reshape(ks[:, nn], [filter_width, num_lags])),
-                   cmap='Greys', interpolation='none',
-                   vmin=-max(abs(ks[:, nn])), vmax=max(abs(ks[:, nn])), aspect='auto')
+        if flipxy:
+            k = np.reshape(ks[:, nn], [filter_width, num_lags])
+        else:
+            k = np.transpose(np.reshape(ks[:, nn], [filter_width, num_lags]))
+        plt.imshow(k, cmap='Greys', interpolation='none', vmin=-max(abs(ks[:, nn])), vmax=max(abs(ks[:, nn])), aspect='auto')
         ax.set_yticklabels([])
         ax.set_xticklabels([])
     plt.show()
@@ -887,22 +923,26 @@ def scaffold_nonconv_plot( side_ndn, with_inh=True, nolabels=True, skip_first_le
 
 
 def scaffold_plot_cell( side_ndn, cell_n, with_inh=True, nolabels=True, skip_first_level=False, linewidth=1):
+    """Plots the scaffold weight vector for a convolutional network for the chosen neuron"""
 
-    # validity check
-    assert len(side_ndn.network_list) == 2, 'This does not seem to be a standard scaffold network.'
+    # either way assume scaffold is last later, and see where it maps from
+    sc_tar = side_ndn.network_list[-1]['ffnet_n'][0]
+    assert sc_tar is not None, 'Unable to read scaffold target.'
+    if len(side_ndn.network_list) != 2:
+        print('Non-typical scaffold network: scaffold = network %d, target = %d' %(len(side_ndn.network_list)-1, sc_tar) )
 
-    num_cells = side_ndn.network_list[1]['layer_sizes'][-1]
-    num_units = side_ndn.networks[1].num_units[:]
+    num_cells = side_ndn.network_list[-1]['layer_sizes'][-1]
+    num_units = side_ndn.networks[-1].num_units[:]
     num_layers = len(num_units)
 
-    if 'biconv' in side_ndn.network_list[0]['layer_types']:
-        num_space = int(side_ndn.networks[0].input_dims[1])//2
+    if 'biconv' in side_ndn.network_list[sc_tar]['layer_types']:
+        num_space = int(side_ndn.networks[sc_tar].input_dims[1])//2
     else:
-        num_space = int(side_ndn.networks[0].input_dims[1])
+        num_space = int(side_ndn.networks[sc_tar].input_dims[1])
 
-    cell_nrms = np.max(np.abs(side_ndn.networks[1].layers[0].weights), axis=0)
-    wside = np.reshape(side_ndn.networks[1].layers[0].weights, [num_space, np.sum(num_units), num_cells])
-    num_inh = side_ndn.network_list[0]['num_inh']
+    cell_nrms = np.max(np.abs(side_ndn.networks[-1].layers[0].weights), axis=0)
+    wside = np.reshape(side_ndn.networks[-1].layers[0].weights, [num_space, np.sum(num_units), num_cells])
+    num_inh = side_ndn.network_list[sc_tar]['num_inh']
     num_exc = np.subtract(num_units, num_inh)
     #cell_nrms = np.sum(side_ndn.networks[1].layers[0].weights, axis=0)
 
@@ -920,7 +960,7 @@ def scaffold_plot_cell( side_ndn, cell_n, with_inh=True, nolabels=True, skip_fir
         fcount += num_units[ll]
         if (num_inh[ll] > 0) and with_inh:
             ws[:, num_exc[ll]:] = np.multiply( ws[:, num_exc[ll]:], -1)
-            if side_ndn.network_list[0]['layer_types'][ll] == 'biconv':
+            if side_ndn.network_list[sc_tar]['layer_types'][ll] == 'biconv':
                 more_inh_range = range(num_units[ll]//2-num_inh[ll], num_units[ll]//2)
                 ws[:, more_inh_range] = np.multiply(ws[:, more_inh_range], -1)
         if not skip_first_level or (ll > 0):
@@ -930,11 +970,11 @@ def scaffold_plot_cell( side_ndn, cell_n, with_inh=True, nolabels=True, skip_fir
                 plt.imshow(ws, aspect='auto', interpolation='none', cmap='bwr', vmin=-1, vmax=1)
             else:
                 plt.imshow(ws, aspect='auto', interpolation='none', cmap='Greys', vmin=0, vmax=1)
-            if side_ndn.network_list[0]['layer_types'][ll] == 'biconv':
+            if side_ndn.network_list[sc_tar]['layer_types'][ll] == 'biconv':
                 plt.plot(np.multiply([1, 1], num_units[ll]//2 - 0.5), [-0.5, num_space - 0.5], 'k')
             if num_inh[ll] > 0:
                 plt.plot(np.multiply([1, 1], num_exc[ll]-0.5), [-0.5, num_space-0.5], 'k')
-                if side_ndn.network_list[0]['layer_types'][ll] == 'biconv':
+                if side_ndn.network_list[sc_tar]['layer_types'][ll] == 'biconv':
                     plt.plot(np.multiply([1, 1], num_exc[ll]-num_units[ll]//2 - 0.5), [-0.5, num_space - 0.5], 'k')
             if ~nolabels:
                 ax.set_xticks([])

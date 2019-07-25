@@ -600,6 +600,7 @@ class ConvXYLayer(Layer):
             num_filters (int): number of convolutional filters in layer
             filter_dims (int or list of ints): dimensions of input data
             shift_spacing (int): stride of convolution operation
+            xy_out (int array): num_filters x 2 array for the spatial output of each filter
             activation_func (str, optional): pointwise function applied to
                 output of affine transformation
                 ['relu'] | 'sigmoid' | 'tanh' | 'identity' | 'softplus' |
