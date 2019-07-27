@@ -188,6 +188,8 @@ class Layer(object):
             init_weights = np.random.normal(size=weight_dims, scale=0.1)
         elif weights_initializer == 'zeros':
             init_weights = np.zeros(shape=weight_dims, dtype='float32')
+        elif weights_initializer == 'ones':
+            init_weights = np.ones(shape=weight_dims, dtype='float32')
         else:
             raise ValueError('Invalid weights_initializer ''%s''' %
                              weights_initializer)
@@ -1577,6 +1579,89 @@ class AddLayer(Layer):
         #flattened_weights = np.reshape(w_pn, [num_input_streams, num_outputs])
         self.weights = w_pn #flattened_weights
         self.biases = sess.run(self.biases_var)
+
+
+class SpkNL_Layer(Layer):
+    """Implementation of separable neural network layer; see
+    http://papers.nips.cc/paper/6942-neural-system-identification-for-large-populations-separating-what-and-where
+    for more info
+
+    """
+
+    def __init__(
+            self,
+            scope=None,
+            input_dims=None,    # this can be a list up to 3-dimensions
+            log_activations=False):
+        """Constructor for SepLayer class
+
+        Args:
+            scope (str): name scope for variables and operations in layer
+            input_dims (int): dimensions of input data
+            weights_initializer (str, optional): initializer for the weights
+                ['trunc_normal'] | 'normal' | 'zeros'
+            biases_initializer (str, optional): initializer for the biases
+                'trunc_normal' | 'normal' | ['zeros']
+            reg_initializer (dict, optional): see Regularizer docs for info
+            num_inh (int, optional): number of inhibitory units in layer
+            pos_constraint (None, valued, optional): True to constrain layer weights to
+                be positive
+            log_activations (bool, optional): True to use tf.summary on layer
+                activations
+
+        """
+
+        # Process stim and filter dimensions
+        # (potentially both passed in as num_inputs list)
+        if isinstance(input_dims, list):
+            while len(input_dims) < 3:
+                input_dims.append(1)
+        else:
+            input_dims = [1, input_dims, 1]  # assume 1-dimensional (space)
+
+
+        super(SpkNL_Layer, self).__init__(
+                scope=scope,
+                input_dims=input_dims,
+                filter_dims=[2, 1, 1],
+                output_dims=input_dims,
+                activation_func='lin',
+                normalize_weights=0,
+                weights_initializer='ones',
+                biases_initializer='zeros',
+                reg_initializer=None,
+                num_inh=0,
+                pos_constraint=False,
+                log_activations=log_activations)
+
+        self.three_param_fit = False
+    # END SpkNLLayer.__init_
+
+    def build_graph(self, inputs, params_dict=None, use_dropout=False):
+        """"""
+
+        _MAX_Y_3PAR = 5
+        if self.three_param_fit:
+            self.weights[0, :] = np.minimum(self.weights[:, 0], MAX_Y_3PAR-0.2)
+
+        with tf.name_scope(self.scope):
+            self._define_layer_variables()
+
+            if self.three_param_fit:
+                _pre = tf.add(tf.multiply(inputs, _MAX_Y_3PAR * tf.sigmoid(self.weights_var[:, 0])),
+                              self.biases_var)
+                post = tf.multiply(self.weights_var[1,:], tf.log( tf.add( tf.exp(_pre), 1.0)))
+            else:
+                #_pre = tf.add( tf.multiply( inputs, self.weights_var[:, 0]), self.biases_var)
+                #post = tf.log( tf.add( tf.exp(_pre), 1.0) )
+                post = tf.nn.softplus(tf.add(tf.multiply(inputs, self.weights_var[:, 0]), self.biases_var))
+
+            self.outputs = post
+
+        if self.log:
+            tf.summary.histogram('act_pre', pre)
+            tf.summary.histogram('act_post', post)
+    # END SpkNL._build_graph
 
 
 class SpikeHistoryLayer(Layer):

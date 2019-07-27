@@ -254,6 +254,13 @@ class FFNetwork(object):
                     pos_constraint=network_params['pos_constraints'][nn],
                     log_activations=network_params['log_activations']))
 
+            elif self.layer_types[nn] == 'spkNL':
+
+                self.layers.append(SpkNL_Layer(
+                    scope='spkNL_layer_%i' % nn,
+                    input_dims=layer_sizes[nn],
+                    log_activations=network_params['log_activations']))
+
             elif self.layer_types[nn] == 'spike_history':
 
                 self.layers.append(SpikeHistoryLayer(

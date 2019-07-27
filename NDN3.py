@@ -1179,7 +1179,8 @@ class NDN(object):
             data_filters=None,
             learning_alg='adam',
             opt_params=None,
-            output_dir=None):
+            output_dir=None,
+            silent=False):
         """Network training function
 
         Args:
@@ -1404,7 +1405,8 @@ class NDN(object):
                         dataset_tr=dataset_tr,
                         dataset_test=dataset_test,
                         opt_params=opt_params,
-                        output_dir=output_dir)
+                        output_dir=output_dir,
+                        silent=silent)
 
                 elif learning_alg is 'lbfgs':
                     raise ValueError(
@@ -1431,7 +1433,8 @@ class NDN(object):
             dataset_tr=None,
             dataset_test=None,
             opt_params=None,
-            output_dir=None):
+            output_dir=None,
+            silent=False):
         """Training function for adam optimizer to clean up code in `train`"""
 
         epochs_training = opt_params['epochs_training']
@@ -1448,7 +1451,8 @@ class NDN(object):
         if early_stop_mode > 10:
             MAPest = True
             early_stop_mode += -10
-            print("MAP estimation early stop mode %d activated." %(early_stop_mode))
+            if not silent:
+                print("MAP estimation early stop mode %d activated." %(early_stop_mode))
 
         if early_stop_mode > 0:
             prev_costs = np.multiply(np.ones(opt_params['early_stop']), float('NaN'))
@@ -1511,7 +1515,7 @@ class NDN(object):
                 sess.run(self.train_step, feed_dict=feed_dict)
 
             # print training updates
-            if opt_params['display'] is not None and \
+            if opt_params['display'] is not None and not silent and \
                     (epoch % opt_params['display'] == opt_params['display'] - 1
                      or epoch == 0):
 
@@ -1674,12 +1678,13 @@ class NDN(object):
                 if early_stop_mode == 1:
                     if (epoch > opt_params['early_stop'] and
                             mean_now >= mean_before):  # or equivalently delta <= 0
-                        print('\n*** early stop criteria met...'
-                              'stopping train now...')
-                        print('     ---> number of epochs used: %d,  '
-                              'end cost: %04f' % (epoch, cost_test))
-                        print('     ---> best epoch: %d,  '
-                              'best cost: %04f\n' % (best_epoch, best_cost))
+                        if not silent:
+                            print('\n*** early stop criteria met...'
+                                  'stopping train now...')
+                            print('     ---> number of epochs used: %d,  ' 
+                                  'end cost: %04f' % (epoch, cost_test))
+                            print('     ---> best epoch: %d,  '
+                                  'best cost: %04f\n' % (best_epoch, best_cost))
                         # restore saved variables into tf Variables
                         if output_dir is not None and chkpted and early_stop_mode > 0:
                             # save_file exists only if chkpted is True
@@ -1690,19 +1695,19 @@ class NDN(object):
                         break
                 else:
                     if mean_now >= mean_before:  # or equivalently delta <= 0
-                        print('\n*** early stop criteria met...'
-                              'stopping train now...')
-                        print('     ---> number of epochs used: %d,  '
-                              'end cost: %04f' % (epoch, cost_test))
-                        print('     ---> best epoch: %d,  '
-                              'best cost: %04f\n' % (best_epoch, best_cost))
+                        if not silent:
+                            print('\n*** early stop criteria met...'
+                                  'stopping train now...')
+                            print('     ---> number of epochs used: %d,  '
+                                  'end cost: %04f' % (epoch, cost_test))
+                            print('     ---> best epoch: %d,  '
+                                  'best cost: %04f\n' % (best_epoch, best_cost))
                         # restore saved variables into tf Variables
                         if output_dir is not None and chkpted and early_stop_mode > 0:
                             # save_file exists only if chkpted is True
                             self.saver.restore(sess, save_file)
                             # delete files before break to clean up space
-                            shutil.rmtree(os.path.join(output_dir, 'bstmods'),
-                                          ignore_errors=True)
+                            shutil.rmtree(os.path.join(output_dir, 'bstmods'), ignore_errors=True)
                         break
         return epoch
         #    return epoch
