@@ -1314,7 +1314,6 @@ class NDN(object):
             use_dropout=use_dropout)
 
         with tf.Session(graph=self.graph, config=self.sess_config) as sess:
-
             # handle output directories
             train_writer = None
             test_writer = None
@@ -1359,7 +1358,8 @@ class NDN(object):
                         train_indxs=train_indxs,
                         test_indxs=test_indxs,
                         opt_params=opt_params,
-                        output_dir=output_dir)
+                        output_dir=output_dir,
+                        silent=silent)
                 elif learning_alg is 'lbfgs':
                     self.train_step.minimize(
                         sess, feed_dict={self.indices: train_indxs})
@@ -1380,7 +1380,8 @@ class NDN(object):
                         output_data=output_data,
                         data_filters=data_filters,
                         opt_params=opt_params,
-                        output_dir=output_dir)
+                        output_dir=output_dir,
+                        silent=silent)
 
                 elif learning_alg is 'lbfgs':
                     feed_dict = self._get_feed_dict(
@@ -1444,7 +1445,6 @@ class NDN(object):
         self.batch_size = opt_params['batch_size']
         if self.data_pipe_type != 'data_as_var':
             assert self.batch_size is not None, 'Need to assign batch_size to train.'
-
         early_stop_mode = opt_params['early_stop_mode']
         MAPest = False
         # flag early stop mode > 10
