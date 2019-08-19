@@ -443,8 +443,8 @@ def generate_xv_folds(nt, fold=5, num_blocks=3):
         test_inds = test_inds + list(range(int(start_ind+tstart), int(start_ind+tstart+XVlength)))
         start_ind = start_ind + NTblock
 
-    test_inds = np.array(test_inds)
-    train_inds = np.array(list(set(range(0, nt)) - set(test_inds)))  # Better way to setdiff?
+    test_inds = np.array(test_inds, dtype='int')
+    train_inds = np.array(list(set(range(0, nt)) - set(test_inds)), dtype='int')  # Better way to setdiff?
 
     return train_inds, test_inds
 

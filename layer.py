@@ -1553,7 +1553,6 @@ class AddLayer(Layer):
             self.outputs = self._apply_dropout(post, use_dropout=use_dropout,
                                                noise_shape=[1, self.num_filters])
 
-
         if self.log:
             tf.summary.histogram('act_pre', pre)
             tf.summary.histogram('act_post', post)
@@ -1579,6 +1578,145 @@ class AddLayer(Layer):
         #flattened_weights = np.reshape(w_pn, [num_input_streams, num_outputs])
         self.weights = w_pn #flattened_weights
         self.biases = sess.run(self.biases_var)
+
+
+class MultLayer(Layer):
+    """Implementation of a simple additive layer that combines several input streams additively.
+    This has a number of [output] units, and number of input streams, each which the exact same
+    size as the number of output units. Each output unit then does a weighted sum over its matching
+    inputs (with a weight for each input stream)
+
+    """
+
+    def __init__(
+            self,
+            scope=None,
+            input_dims=None,  # this can be a list up to 3-dimensions
+            output_dims=None,
+            activation_func='relu',
+            normalize_weights=0,
+            reg_initializer=None,
+            num_inh=0,
+            pos_constraint=None,
+            log_activations=False):
+        """Constructor for sepLayer class
+
+        Args:
+            scope (str): name scope for variables and operations in layer
+            input_dims (int): dimensions of input data
+            output_dims (int): dimensions of output data
+            activation_func (str, optional): pointwise function applied to
+                output of affine transformation
+                ['relu'] | 'sigmoid' | 'tanh' | 'identity' | 'softplus' |
+                'elu' | 'quad'
+            normalize_weights (int): type of normalization to apply to the
+                weights. Default [0] is to normalize across the first dimension
+                (time/filters), but '1' will normalize across spatial
+                dimensions instead, and '2' will normalize both
+            reg_initializer (dict, optional): see Regularizer docs for info
+            num_inh (int, optional): number of inhibitory units in layer
+            pos_constraint (None, valued, optional): True to constrain layer weights to
+                be positive
+            log_activations (bool, optional): True to use tf.summary on layer
+                activations
+        """
+
+        # check for required inputs
+        if input_dims is None or output_dims is None:
+            raise TypeError('Must specify input and output dimensions')
+
+        num_outputs = np.prod(output_dims)
+        num_input_streams = int(np.prod(input_dims) / num_outputs)
+        # Enforce number of input streams is 2
+        assert num_input_streams == 2, 'Number of input streams for MultLayer must be 2.'
+
+        # Input dims is just number of input streams
+        input_dims = [num_input_streams, 1, 1]
+        # can have overal weights, but not otherwise fit (so weight dims is output dims
+
+        super(MultLayer, self).__init__(
+                scope=scope,
+                input_dims=input_dims,
+                filter_dims=[1, 1, 1],
+                output_dims=num_outputs,
+                activation_func=activation_func,
+                normalize_weights=normalize_weights,
+                weights_initializer='zeros',
+                biases_initializer='zeros',
+                reg_initializer=reg_initializer,
+                num_inh=num_inh,
+                pos_constraint=pos_constraint,
+                log_activations=log_activations)
+
+        # Initialize all weights to 1, which is the default combination
+        self.weights[:, :] = 1.0
+        self.biases[:] = 1e-8
+
+    # END MultLayer.__init__
+
+    def build_graph(self, inputs, params_dict=None, use_dropout=False):
+        """By definition, the inputs will be composed of a number of input streams, given by
+        the first dimension of input_dims, and each stream will have the same number of inputs
+        as the number of output units."""
+
+        #num_input_streams = self.input_dims[0]
+        num_outputs = self.output_dims[1]
+        # inputs will be NTx(num_input_streamsxnum_outputs)
+        
+        with tf.name_scope(self.scope):
+            self._define_layer_variables()
+
+            if self.pos_constraint is not None:
+                w_p = tf.maximum(self.weights_var, 0.0)
+            else:
+                w_p = self.weights_var
+
+            if self.normalize_weights > 0:
+                w_pn = tf.nn.l2_normalize(w_p, axis=0)
+            else:
+                w_pn = w_p
+
+            #flattened_weights = tf.reshape(w_pn, [1, num_input_streams*num_outputs])
+
+            # reshape inputs and multiply
+            #mult_inputs = tf.reduce_prod(tf.reshape(inputs, [-1, 2, num_outputs]), axis=1)
+            input2 = tf.reshape(inputs, [-1, 2, num_outputs])
+            mult_inputs = tf.multiply( input2[:, 0, :], tf.add(input2[:, 1, :], 1.0))
+            pre = tf.add(tf.multiply(mult_inputs, w_pn), self.biases_var)
+
+            if self.ei_mask_var is None:
+                post = self._apply_act_func(pre)
+            else:
+                post = tf.multiply(self._apply_act_func(pre), self.ei_mask_var)
+
+            self.outputs = self._apply_dropout(post, use_dropout=use_dropout,
+                                               noise_shape=[1, self.num_filters])
+
+        if self.log:
+            tf.summary.histogram('act_pre', pre)
+            tf.summary.histogram('act_post', post)
+    # END MultLayer._build_graph
+
+    def write_layer_params(self, sess):
+        """Write weights/biases in tf Variables to numpy arrays"""
+
+        num_input_streams = self.input_dims[0]
+        num_outputs = self.output_dims[1]
+        _tmp_weights = sess.run(self.weights_var)
+
+        if self.pos_constraint is not None:
+            w_p = np.maximum(_tmp_weights, 0.0)
+        else:
+            w_p = _tmp_weights
+
+        if (self.normalize_weights > 0) and (num_input_streams != 1):
+            w_pn = sk_normalize(w_p, axis=0)
+        else:
+            w_pn = w_p
+
+        self.weights = w_pn
+        self.biases = sess.run(self.biases_var)
+    # END MultLayer.write_layer_params
 
 
 class SpkNL_Layer(Layer):
