@@ -1212,6 +1212,8 @@ class NDN(object):
                 or summary settings, the graph will automatically be saved.
                 Must be present if early_stopping is desired to restore the
                 best fit, otherwise it will restore the model at break point.
+            silent (Boolean, optional), slients standard fitting output (i.e. non-verbose)
+                default is False
 
         Returns:
             int: number of total training epochs
@@ -1249,7 +1251,13 @@ class NDN(object):
         for nn, temp_data in enumerate(output_data):
             if temp_data.shape[0] != self.num_examples:
                 raise ValueError('Output dim0 must match model values')
+            # Protect single-dimension outputs
+            if len(temp_data.shape) == 1:
+                output_data[nn] = np.expand_dims(temp_data, axis=1)
             if self.filter_data:
+                # Protect single-dimension outputs
+                if len(data_filters[nn].shape) == 1:
+                    data_filters[nn] = np.expand_dims(data_filters[nn], axis=1)
                 assert data_filters[nn].shape == temp_data.shape, \
                     'data_filter sizes must match output_data'
 
@@ -1257,6 +1265,7 @@ class NDN(object):
         if opt_params is None:
             opt_params = {}
         opt_params = self.optimizer_defaults(opt_params, learning_alg)
+
 
         # update data pipeline type before building tensorflow graph
         self.data_pipe_type = opt_params['data_pipe_type']
@@ -2084,7 +2093,7 @@ class NDN(object):
             if 'epochs_summary' not in opt_params:
                 opt_params['epochs_summary'] = None
             if 'early_stop' not in opt_params:
-                opt_params['early_stop'] = 0
+                opt_params['early_stop'] = 11
             if 'beta1' not in opt_params:
                 opt_params['beta1'] = 0.9
             if 'beta2' not in opt_params:

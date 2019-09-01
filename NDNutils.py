@@ -250,6 +250,52 @@ def concatenate_input_dims(parent_input_size, added_input_size):
     return cat_dims
 
 
+def shift_mat(m, sh, dim, zpad=True):
+    """Modern version of shift_mat_zpad, good up to 4-dimensions, with z-pad as option"""
+    shm = np.roll(m.copy(), sh, dim)
+    if zpad:
+        assert m.ndim < 5, 'Cannot do more than 4 dimensions.'
+        L = m.shape[dim]
+        if abs(sh) >= L:
+            return np.zeros(m.shape)
+        if sh < 0:
+            ztar = range(L-abs(sh),L)
+        else:
+            ztar = range(abs(sh))
+        if m.ndim == 1:
+            if dim == 0:
+                shm[ztar] = 0
+        elif m.ndim == 2:
+            if dim == 0:
+                shm[ztar, :] = 0
+            else:
+                shm[:, ztar] = 0
+        elif m.ndim == 3:
+            if dim == 0:
+                shm[ztar, :, :] = 0
+            elif dim == 1:
+                shm[:, ztar, :] = 0
+            elif dim == 2:
+                shm[:, :, ztar] = 0
+        elif m.ndim == 3:
+            if dim == 0:
+                shm[ztar ,: ,:] = 0
+            elif dim == 1:
+                shm[:, ztar, :] = 0
+            elif dim == 2:
+                shm[: ,: ,ztar] = 0
+        elif m.ndim == 4:
+            if dim == 0:
+                shm[ztar ,: ,: ,:] = 0
+            elif dim == 1:
+                shm[:, ztar, :, :] = 0
+            elif dim == 2:
+                shm[:, :, ztar, :] = 0
+            elif dim == 3:
+                shm[:, :, :, ztar] = 0
+    return shm
+
+
 def shift_mat_zpad(x, shift, dim=0):
     """Takes a vector or matrix and shifts it along dimension dim by amount 
     shift using zero-padding. Positive shifts move the matrix right or down.

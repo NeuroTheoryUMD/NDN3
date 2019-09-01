@@ -1662,7 +1662,7 @@ class MultLayer(Layer):
         #num_input_streams = self.input_dims[0]
         num_outputs = self.output_dims[1]
         # inputs will be NTx(num_input_streamsxnum_outputs)
-        
+
         with tf.name_scope(self.scope):
             self._define_layer_variables()
 
