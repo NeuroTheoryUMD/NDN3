@@ -13,6 +13,7 @@ def ffnetwork_params(
         layer_sizes=None,
         layer_types=None,
         act_funcs='relu',
+        time_expand=None,
         ei_layers=None,
         reg_list=None,
         xstim_n=0,
@@ -22,7 +23,8 @@ def ffnetwork_params(
         verbose=True,
         log_activations=False,
         conv_filter_widths=None,  # the below are for convolutional network
-        shift_spacing=1):
+        shift_spacing=1,
+        dilation=1):
     """generates information for the network_params dict that is passed to the
     NDN constructor.
     
@@ -42,6 +44,9 @@ def ffnetwork_params(
             network layers; replicated if a single element.
             ['relu'] | 'sigmoid' | 'tanh' | 'identity' | 'softplus' | 'elu' | 
             'quad' | 'lin'
+        time_expand: (list of ints, optional): How much the input to the given layer
+            should be "time_embedded" so the layer processes that many lags.
+            DEFAULT is all zeros (which None also converts from)
         ei_layers (`None` or list of ints, optional): if not `None`, it should
             be a list of the number of inhibitory units for each layer other
             than the output layer, so list should be of length one less than
@@ -72,8 +77,8 @@ def ffnetwork_params(
         FOR convolution-specific parameters:
         conv_filter_widths (list of ints, optional): spatial dimension of
             filter (if different than stim_dims)
-        shift_spacing (int, optional): stride used by convolution operation
-
+        shift_spacing (int, optional): stride used by convolution operation (default 1)
+        dilation (int, optional): dilation used by convolution operation (default 1)
         
     Returns:
         dict: params to initialize an `FFNetwork` object
@@ -112,6 +117,14 @@ def ffnetwork_params(
     # Process input_dims, if applicable
     if input_dims is not None:
         input_dims = expand_input_dims_to_3d(input_dims)
+
+    if time_expand is None:
+        time_expand = [0]*num_layers
+    else:
+        if not isinstance(time_expand, list):
+            time_expand = [time_expand]
+        if len(time_expand) < num_layers:
+            time_expand += [0]*(num_layers-len(time_expand))
 
     # Establish positivity constraints
     pos_constraints = [None] * num_layers
@@ -163,6 +176,7 @@ def ffnetwork_params(
         'layer_types': layer_types,
         'activation_funcs': act_funcs,
         'normalize_weights': norm_vals,
+        'time_expand': time_expand,
         'reg_initializers': reg_initializers,
         'weights_initializers': weight_inits,
         'num_inh': num_inh_layers,
@@ -188,6 +202,15 @@ def ffnetwork_params(
     else:
         shift_spacing = [1]*num_layers
     network_params['shift_spacing'] = shift_spacing
+
+    if dilation is not None:
+        if not isinstance(dilation, list):
+            dilation = [dilation]*num_layers
+        while len(dilation) < num_layers:
+            dilation.append(None)
+    else:
+        dilation = [1]*num_layers
+    network_params['dilation'] = dilation
 
     if verbose:
         if input_dims is not None:

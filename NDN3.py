@@ -15,9 +15,6 @@ from ffnetwork import FFNetwork
 from ffnetwork import SideNetwork
 from NDNutils import concatenate_input_dims
 
-#from tlayer import *
-#from layer import *
-
 
 class NDN(object):
     """Tensorflow (tf) implementation of Neural Deep Network class
@@ -115,6 +112,7 @@ class NDN(object):
         # end from old network.py
 
         self.batch_size = batch_size
+        self.time_spread = None
 
         # Set network_list
         if not isinstance(network_list, list):
@@ -219,6 +217,14 @@ class NDN(object):
                         scope='network_%i' % nn,
                         params_dict=self.network_list[nn]))
 
+            # Track temporal spread
+            if self.networks[nn].time_spread > 0:
+                if self.time_spread is None:
+                    self.time_spread = self.networks[nn].time_spread
+                else:
+                    # For now assume serial procuessing (fix latter for parrallel?
+                    self.time_spread += self.networks[nn].time_spread
+
         # Assemble outputs
         for nn in range(len(self.ffnet_out)):
             ffnet_n = self.ffnet_out[nn]
@@ -231,12 +237,16 @@ class NDN(object):
             learning_alg='adam',
             opt_params=None,
             fit_variables=None,
+            batch_size=None,
             use_dropout=False):
         """NDN._build_graph"""
 
         # Take care of optimize parameters if necessary
         if opt_params is None:
             opt_params = self.optimizer_defaults({}, learning_alg)
+        # Update batch-size as needed
+        if opt_params['batch_size'] is not None:
+            self.batch_size = opt_params['batch_size']
 
         # overwrite unit_cost_norm with opt_params value (if specified)
         if opt_params['poisson_unit_norm'] is not None:
@@ -302,7 +312,7 @@ class NDN(object):
                 # first argument for T/FFnetworks is inputs but it is input_network for scaffold
                 # so no keyword argument used below
                 self.networks[nn].build_graph(input_cat, params_dict=self.network_list[nn],
-                                              use_dropout=use_dropout)
+                                              batch_size=batch_size, use_dropout=use_dropout)
 
             # Define loss function
             with tf.variable_scope('loss'):
@@ -332,17 +342,31 @@ class NDN(object):
         cost = []
         unit_cost = []
         for nn in range(len(self.ffnet_out)):
-            data_out = self.data_out_batch[nn]
+            if self.time_spread is None:
+                data_out = self.data_out_batch[nn]
+            else:
+                data_out = tf.slice(self.data_out_batch[nn],
+                                    [self.time_spread, 0],
+                                    [self.batch_size-self.time_spread, -1])
+
             if self.filter_data:
-                # this will zero out predictions where there is no data,
-                # matching Robs here
+                # this will zero out predictions where there is no data, matching Robs here
                 pred = tf.multiply(
                     self.networks[self.ffnet_out[nn]].layers[-1].outputs,
                     self.data_filter_batch[nn])
             else:
                 pred = self.networks[self.ffnet_out[nn]].layers[-1].outputs
 
-            nt = tf.cast(tf.shape(pred)[0], tf.float32)
+            if self.time_spread is None:
+                #nt = tf.cast(tf.shape(pred)[0], tf.float32)
+                nt = tf.constant(self.batch_size, dtype=tf.float32)
+            else:
+                pred = tf.slice(pred,
+                                [self.time_spread, 0],
+                                [self.batch_size-self.time_spread, -1])
+                # effective_batch_size is self.batch_size - self.time_spread
+                nt = tf.constant(self.batch_size - self.time_spread, dtype=tf.float32)
+
             # define cost function
             if self.noise_dist == 'gaussian':
                 with tf.name_scope('gaussian_loss'):
@@ -476,7 +500,6 @@ class NDN(object):
                         fit_list[nn][layer]['biases'] = False
         return fit_list
         # END NDN.set_fit_variables
-
 
     def set_partial_fit(self, ffnet_target=0, layer_target=None, value=None):
         """ Assign partial_fit values
@@ -706,9 +729,9 @@ class NDN(object):
         # Place graph operations on CPU
         if not use_gpu:
             with tf.device('/cpu:0'):
-                self._build_graph(use_dropout=use_dropout)
+                self._build_graph(batch_size=self.batch_size, use_dropout=use_dropout)
         else:
-            self._build_graph(use_dropout=use_dropout)
+            self._build_graph(batch_size=self.batch_size, use_dropout=use_dropout)
 
         with tf.Session(graph=self.graph, config=self.sess_config) as sess:
 
@@ -830,10 +853,10 @@ class NDN(object):
         if not use_gpu:
             temp_config = tf.ConfigProto(device_count={'GPU': 0})
             with tf.device('/cpu:0'):
-                self._build_graph(use_dropout=use_dropout)
+                self._build_graph(batch_size=self.batch_size, use_dropout=use_dropout)
         else:
             temp_config = tf.ConfigProto(device_count={'GPU': 1})
-            self._build_graph(use_dropout=use_dropout)
+            self._build_graph(batch_size=self.batch_size, use_dropout=use_dropout)
 
         with tf.Session(graph=self.graph, config=temp_config) as sess:
 
@@ -1266,7 +1289,6 @@ class NDN(object):
             opt_params = {}
         opt_params = self.optimizer_defaults(opt_params, learning_alg)
 
-
         # update data pipeline type before building tensorflow graph
         self.data_pipe_type = opt_params['data_pipe_type']
 
@@ -1320,6 +1342,7 @@ class NDN(object):
             learning_alg=learning_alg,
             opt_params=opt_params,
             fit_variables=fit_variables,
+            batch_size=opt_params['batch_size'],
             use_dropout=use_dropout)
 
         with tf.Session(graph=self.graph, config=self.sess_config) as sess:
@@ -1493,20 +1516,31 @@ class NDN(object):
         best_cost = float('Inf')
         chkpted = False
 
+        if self.time_spread is not None:
+            # get number of batches and their order for train indxs
+            num_batches_tr = train_indxs.shape[0] // self.batch_size
+            batch_order = np.arange(num_batches_tr)
+
         # start training loop
         for epoch in range(epochs_training):
 
             # shuffle data before each pass
-            train_indxs_perm = np.random.permutation(train_indxs)
+            if self.time_spread is None:
+                train_indxs_perm = np.random.permutation(train_indxs)
+            else:
+                batch_order_perm = np.random.permutation(batch_order)
 
             # pass through dataset once
             for batch in range(num_batches_tr):
-                if (self.data_pipe_type == 'data_as_var') or (
-                        self.data_pipe_type == 'feed_dict'):
+
+                if (self.data_pipe_type == 'data_as_var') or (self.data_pipe_type == 'feed_dict'):
                     # get training indices for this batch
-                    batch_indxs = train_indxs_perm[
-                        batch * opt_params['batch_size']:
-                        (batch + 1) * opt_params['batch_size']]
+                    if self.time_spread is None:
+                        batch_indxs = train_indxs_perm[batch * opt_params['batch_size']:
+                                                       (batch + 1) * opt_params['batch_size']]
+                    else:
+                        batch_indxs = train_indxs[batch_order_perm[batch] * self.batch_size:
+                                                  (batch_order_perm[batch]+1) * self.batch_size]
 
                 # one step of optimization routine
                 if self.data_pipe_type == 'data_as_var':
@@ -1523,17 +1557,16 @@ class NDN(object):
 
                 sess.run(self.train_step, feed_dict=feed_dict)
 
-            # print training updates
+            # print training updates -- recalcs all training data (no need to permute)
             if opt_params['display'] is not None and not silent and \
-                    (epoch % opt_params['display'] == opt_params['display'] - 1
-                     or epoch == 0):
+                    ((epoch % opt_params['display'] == opt_params['display']-1) or (epoch == 0)):
 
-                #cost_tr, cost_test, reg_pen = 0, 0, 0
                 cost_tr, cost_test = 0, 0
                 for batch_tr in range(num_batches_tr):
-                    batch_indxs_tr = train_indxs[
-                                     batch_tr * opt_params['batch_size']:
-                                     (batch_tr + 1) * opt_params['batch_size']]
+                    # Will be contiguous data: no need to change time-spread
+                    batch_indxs_tr = train_indxs[batch_tr * opt_params['batch_size']:
+                                                 (batch_tr+1) * opt_params['batch_size']]
+
                     if self.data_pipe_type == 'data_as_var':
                         feed_dict = {self.indices: batch_indxs_tr}
                     elif self.data_pipe_type == 'feed_dict':
@@ -1546,11 +1579,9 @@ class NDN(object):
                         feed_dict = {self.iterator_handle: iter_handle_tr}
 
                     cost_tr += sess.run(self.cost, feed_dict=feed_dict)
-                    #reg_pen += sess.run(self.cost_reg, feed_dict=feed_dict)
 
                 cost_tr /= num_batches_tr
                 reg_pen = sess.run(self.cost_reg)
-                #reg_pen /= num_batches_tr
 
                 if test_indxs is not None:
                     if self.data_pipe_type == 'data_as_var' or \
@@ -1586,15 +1617,11 @@ class NDN(object):
             # save model checkpoints
             if epochs_ckpt is not None and (
                     epoch % epochs_ckpt == epochs_ckpt - 1 or epoch == 0):
-                save_file = os.path.join(
-                    output_dir, 'ckpts',
-                    str('epoch_%05g.ckpt' % epoch))
+                save_file = os.path.join(output_dir, 'ckpts', str('epoch_%05g.ckpt' % epoch))
                 self.checkpoint_model(sess, save_file)
 
             # save model summaries
-            if epochs_summary is not None and \
-                    (epoch % epochs_summary == epochs_summary - 1
-                     or epoch == 0):
+            if epochs_summary is not None and ((epoch % epochs_summary == epochs_summary-1) or (epoch == 0)):
 
                 # TODO: what to use with feed_dict?
                 if opt_params['run_diagnostics']:
@@ -1603,12 +1630,9 @@ class NDN(object):
                         feed_dict=feed_dict,
                         options=run_options,
                         run_metadata=run_metadata)
-                    train_writer.add_run_metadata(
-                        run_metadata, 'epoch_%d' % epoch)
+                    train_writer.add_run_metadata(run_metadata, 'epoch_%d' % epoch)
                 else:
-                    summary = sess.run(
-                        self.merge_summaries,
-                        feed_dict=feed_dict)
+                    summary = sess.run(self.merge_summaries, feed_dict=feed_dict)
                 train_writer.add_summary(summary, epoch)
                 train_writer.flush()
 
@@ -1619,12 +1643,9 @@ class NDN(object):
                             feed_dict=feed_dict,
                             options=run_options,
                             run_metadata=run_metadata)
-                        test_writer.add_run_metadata(
-                            run_metadata, 'epoch_%d' % epoch)
+                        test_writer.add_run_metadata(run_metadata, 'epoch_%d' % epoch)
                     else:
-                        summary = sess.run(
-                            self.merge_summaries,
-                            feed_dict=feed_dict)
+                        summary = sess.run(self.merge_summaries, feed_dict=feed_dict)
                     test_writer.add_summary(summary, epoch)
                     test_writer.flush()
 
@@ -1635,8 +1656,7 @@ class NDN(object):
                     warnings.simplefilter("ignore", category=RuntimeWarning)
                     mean_before = np.nanmean(prev_costs)
 
-                if self.data_pipe_type == 'data_as_var' or \
-                        self.data_pipe_type == 'feed_dict':
+                if (self.data_pipe_type == 'data_as_var') or (self.data_pipe_type == 'feed_dict'):
                     cost_test = self._get_test_cost(
                         sess=sess,
                         input_data=input_data,
@@ -1673,14 +1693,11 @@ class NDN(object):
                     # chkpt model if desired
                     if output_dir is not None:
                         if early_stop_mode == 1:
-                            save_file = os.path.join(output_dir,
-                                                     'bstmods', 'best_model')
+                            save_file = os.path.join(output_dir, 'bstmods', 'best_model')
                             self.checkpoint_model(sess, save_file)
                             chkpted = True
-                        elif early_stop_mode == 2 and \
-                                delta < 5e-5:
-                            save_file = os.path.join(output_dir,
-                                                     'bstmods', 'best_model')
+                        elif (early_stop_mode == 2) and (delta < 5e-5):
+                            save_file = os.path.join(output_dir, 'bstmods', 'best_model')
                             self.checkpoint_model(sess, save_file)
                             chkpted = True
 
@@ -1688,8 +1705,7 @@ class NDN(object):
                     if (epoch > opt_params['early_stop'] and
                             mean_now >= mean_before):  # or equivalently delta <= 0
                         if not silent:
-                            print('\n*** early stop criteria met...'
-                                  'stopping train now...')
+                            print('\n*** early stop criteria met...stopping train now...')
                             print('     ---> number of epochs used: %d,  ' 
                                   'end cost: %04f' % (epoch, cost_test))
                             print('     ---> best epoch: %d,  '
@@ -1699,14 +1715,12 @@ class NDN(object):
                             # save_file exists only if chkpted is True
                             self.saver.restore(sess, save_file)
                             # delete files before break to clean up space
-                            shutil.rmtree(os.path.join(output_dir, 'bstmods'),
-                                          ignore_errors=True)
+                            shutil.rmtree(os.path.join(output_dir, 'bstmods'), ignore_errors=True)
                         break
                 else:
                     if mean_now >= mean_before:  # or equivalently delta <= 0
                         if not silent:
-                            print('\n*** early stop criteria met...'
-                                  'stopping train now...')
+                            print('\n*** early stop criteria met...stopping train now...')
                             print('     ---> number of epochs used: %d,  '
                                   'end cost: %04f' % (epoch, cost_test))
                             print('     ---> best epoch: %d,  '
@@ -1730,9 +1744,8 @@ class NDN(object):
             num_batches_test = test_indxs.shape[0] // test_batch_size
             cost_test = 0
             for batch_test in range(num_batches_test):
-                batch_indxs_test = test_indxs[
-                    batch_test * test_batch_size:
-                    (batch_test + 1) * test_batch_size]
+                batch_indxs_test = test_indxs[batch_test * test_batch_size:
+                                              (batch_test+1) * test_batch_size]
                 if self.data_pipe_type == 'data_as_var':
                     feed_dict = {self.indices: batch_indxs_test}
                 elif self.data_pipe_type == 'feed_dict':
@@ -1766,6 +1779,9 @@ class NDN(object):
             batch_indxs=None,
             data_filters=None):
         """Generates feed dict to be used with the `feed_dict` data pipeline"""
+
+        #if self.time_spread is not None:
+        #    print('Is _get_feed_dict doing what we want with time-spread data?')
 
         if batch_indxs is None:
             batch_indxs = np.arange(input_data[0].shape[0])
@@ -1891,7 +1907,7 @@ class NDN(object):
             os.makedirs(os.path.dirname(save_file))
 
         self.saver.save(sess, save_file)
-#        print('Model checkpointed to %s' % save_file)
+        # print('Model checkpointed to %s' % save_file)
 
     def restore_model(self, save_file, input_data=None, output_data=None):
         """Restore previously checkpointed model parameters in tf Variables
@@ -1906,7 +1922,6 @@ class NDN(object):
 
         Raises:
             ValueError: If `save_file` is not a valid filename
-
         """
 
         if not os.path.isfile(save_file + '.meta'):
@@ -1944,7 +1959,6 @@ class NDN(object):
 
         Args:
             save_file (str): full path to output file
-
         """
 
         import sys
@@ -2123,3 +2137,42 @@ class NDN(object):
 
         return opt_params
     # END network.optimizer_defaults
+
+    # FROM TNDN
+    def _set_batch_size(self, new_batch_size):
+        """
+        :param new_size:
+        :return:
+        """
+
+        # TNDN
+        if hasattr(self, 'batch_size'):
+            self.batch_size = new_batch_size
+
+        # TFFNetworks, layers
+        for nn in range(self.num_networks):
+            if hasattr(self.networks[nn], 'batch_size'):
+                self.networks[nn].batch_size = new_batch_size
+            for mm in range(len(self.networks[nn].layers)):
+                if hasattr(self.networks[nn].layers[mm], 'batch_size'):
+                    self.networks[nn].layers[mm].batch_size = new_batch_size
+    # END TNDN._set_batch_size
+
+    def _set_time_spread(self, new_time_spread):
+        """
+        :param new_size:
+        :return:
+        """
+
+        # TNDN
+        if hasattr(self, 'time_spread'):
+            self.time_spread = new_time_spread
+
+        # TFFNetworks, layers
+        for nn in range(self.num_networks):
+            if hasattr(self.networks[nn], 'time_spread'):
+                self.networks[nn].time_spread = new_time_spread
+            for mm in range(len(self.networks[nn].layers)):
+                if hasattr(self.networks[nn].layers[mm], 'time_spread'):
+                    self.networks[nn].layers[mm].time_spread = new_time_spread
+    # END TNDN._set_time_spread

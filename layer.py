@@ -68,7 +68,7 @@ class Layer(object):
                 Note that time-lag dimension is important for d2t and d2xt regularization, and spatial dimensions
                 are important for convolutions as well as regularization of d2x and d2xt. max_filt and max_space also
                 Default is none, which means will be determined at the build time
-            output_dims ((int or list of ints): size of outputs of layer, arranged as multi-dimensional list as well
+            output_dims (int or list of ints): size of outputs of layer, arranged as multi-dimensional list as well
             filter_dims (int or list of ints): dimensions of filters: if left blank will be determined by input_dims,
                 but might be different for convolutional reasons (not implemented in layer, but its children)
             activation_func (str, optional): pointwise function applied to
@@ -255,7 +255,7 @@ class Layer(object):
             self.ei_mask_var = None
     # END Layer._define_layer_variables
 
-    def build_graph(self, inputs, params_dict=None, use_dropout=False):
+    def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
 
         with tf.name_scope(self.scope):
             self._define_layer_variables()
@@ -510,7 +510,7 @@ class ConvLayer(Layer):
         self.output_dims = [num_filters] + num_shifts[:]
     # END ConvLayer.__init__
 
-    def build_graph(self, inputs, params_dict=None, use_dropout=False):
+    def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
 
         assert params_dict is not None, 'Incorrect siLayer initialization.'
         # Unfold siLayer-specific parameters for building graph
@@ -685,7 +685,7 @@ class ConvXYLayer(Layer):
                         np.tile(np.arange(nc), (batch_sz,)))
         return tf.constant(space_ind, dtype=tf.int32)
 
-    def build_graph(self, inputs, params_dict=None, use_dropout=False):
+    def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
 
         assert params_dict is not None, 'Incorrect siLayer initialization.'
         # Unfold siLayer-specific parameters for building graph
@@ -992,7 +992,7 @@ class SepLayer(Layer):
 
         return w_full
 
-    def build_graph(self, inputs, params_dict=None, use_dropout=False):
+    def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
 
         with tf.name_scope(self.scope):
             self._define_layer_variables()
@@ -1395,7 +1395,7 @@ class ConvSepLayer(Layer):
 
         return w_full
 
-    def build_graph(self, inputs, params_dict=None, use_dropout=False):
+    def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
         with tf.name_scope(self.scope):
             self._define_layer_variables()
 
@@ -1511,7 +1511,7 @@ class AddLayer(Layer):
 
     # END AddLayer.__init__
 
-    def build_graph(self, inputs, params_dict=None, use_dropout=False):
+    def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
         """By definition, the inputs will be composed of a number of input streams, given by
         the first dimension of input_dims, and each stream will have the same number of inputs
         as the number of output units."""
@@ -1654,7 +1654,7 @@ class MultLayer(Layer):
 
     # END MultLayer.__init__
 
-    def build_graph(self, inputs, params_dict=None, use_dropout=False):
+    def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
         """By definition, the inputs will be composed of a number of input streams, given by
         the first dimension of input_dims, and each stream will have the same number of inputs
         as the number of output units."""
@@ -1775,7 +1775,7 @@ class SpkNL_Layer(Layer):
         self.three_param_fit = False
     # END SpkNLLayer.__init_
 
-    def build_graph(self, inputs, params_dict=None, use_dropout=False):
+    def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
         """"""
 
         _MAX_Y_3PAR = 5
@@ -1870,7 +1870,7 @@ class SpikeHistoryLayer(Layer):
 
     # END SpikeHistorylayer.__init__
 
-    def build_graph(self, inputs, params_dict=None, use_dropout=False):
+    def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
         """By definition, the inputs will be composed of a number of input streams, given by
         the first dimension of input_dims, and each stream will have the same number of inputs
         as the number of output units."""
@@ -1986,7 +1986,7 @@ class BiConvLayer(ConvLayer):
             print('Reflecting:', self.output_dims)
     # END BiConvLayer.__init__
 
-    def build_graph(self, inputs, params_dict=None, use_dropout=False):
+    def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
 
         assert params_dict is not None, 'Incorrect layer initialization.'
 
@@ -2209,7 +2209,7 @@ class ConvLayerLNL(ConvLayer):
 
     # END ConvLayerLNL.__init__
 
-    def build_graph(self, inputs, params_dict=None, use_dropout=False):
+    def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
 
         assert params_dict is not None, 'Incorrect siLayer initialization.'
         # Unfold siLayer-specific parameters for building graph
@@ -2365,7 +2365,7 @@ class HadiReadoutLayer(Layer):
                         np.tile(np.arange(nc), (batch_sz,)))
         return tf.constant(space_ind, dtype=tf.int32)
 
-    def build_graph(self, inputs, params_dict=None, use_dropout=False):
+    def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
         with tf.name_scope(self.scope):
             self._define_layer_variables()
 

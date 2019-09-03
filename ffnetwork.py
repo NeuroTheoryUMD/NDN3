@@ -5,6 +5,7 @@ from __future__ import division
 
 import tensorflow as tf
 from layer import *
+from tlayer import *
 
 
 class FFNetwork(object):
@@ -170,10 +171,12 @@ class FFNetwork(object):
         if 'pos_constraints' not in params_dict:
             params_dict['pos_constraints'] = False
         if type(params_dict['pos_constraints']) is not list:
-            params_dict['pos_constraints'] = \
-                [params_dict['pos_constraints']] * self.num_layers
+            params_dict['pos_constraints'] = [params_dict['pos_constraints']] * self.num_layers
         elif len(params_dict['pos_constraints']) != self.num_layers:
             raise ValueError('Invalid number of pos_con')
+
+        if 'time_expand' not in params_dict:
+            params_dict['time_expand'] = [0] * self.num_layers
 
         if 'log_activations' not in params_dict:
             params_dict['log_activations'] = False
@@ -192,9 +195,20 @@ class FFNetwork(object):
 
         layer_sizes = [self.input_dims] + network_params['layer_sizes']
         self.layers = []
-        #print(self.scope, layer_sizes)
+        self.time_expand = network_params['time_expand']
+        if len(self.time_expand) < self.num_layers:
+            self.time_expand += [0]*(self.num_layers-len(self.time_expand))
+        self.time_spread = np.sum(self.time_expand)
 
+        # print(self.scope, layer_sizes)
         for nn in range(self.num_layers):
+
+            # Add time lags to first input dimension
+            if self.time_expand[nn] > 0:
+                if layer_sizes[nn][0] > 1:
+                    layer_sizes[nn] = [self.time_expand[nn]] + layer_sizes[nn][1:] + [layer_sizes[nn][0]]
+                else:
+                    layer_sizes[nn] = [self.time_expand[nn]] + layer_sizes[nn][1:]
 
             if self.layer_types[nn] == 'normal':
 
@@ -319,6 +333,28 @@ class FFNetwork(object):
                 if nn < self.num_layers:
                     layer_sizes[nn+1] = self.layers[nn].output_dims
 
+            elif self.layer_types[nn] == 'temporal':
+                self.layers.append(TLayer(
+                    scope='temporal_layer_%i' % nn,
+                    num_lags=self.time_expand[nn],
+                    input_dims=layer_sizes[nn],
+                    num_filters=layer_sizes[nn + 1],
+                    dilation=network_params['dilation'][nn],
+                    activation_func=network_params['activation_funcs'][nn],
+                    normalize_weights=network_params['normalize_weights'][nn],
+                    weights_initializer=network_params['weights_initializers'][nn],
+                    biases_initializer=network_params['biases_initializers'][nn],
+                    reg_initializer=network_params['reg_initializers'][nn],
+                    num_inh=network_params['num_inh'][nn],
+                    pos_constraint=network_params['pos_constraints'][nn],
+                    log_activations=network_params['log_activations']))
+
+                # Cancel time-expansion because handled internally
+                self.time_expand[nn] = 0
+                # Modify output size to take into account shifts
+                if nn < self.num_layers:
+                    layer_sizes[nn+1] = self.layers[nn].output_dims
+
             elif self.layer_types[nn] == 'conv_xy':
 
                 if network_params['conv_filter_widths'][nn] is not None:
@@ -385,7 +421,7 @@ class FFNetwork(object):
                     # this should be the case:
                     # nlags=network_params['time_expand'][nn],
                     # but since we don't have temporal side network we'll do this for now:
-                    nlags=None,
+                    #nlags=None,
                     input_dims=layer_sizes[nn],
                     num_filters=layer_sizes[nn + 1],
                     xy_out=network_params['xy_out'][nn],
@@ -401,7 +437,6 @@ class FFNetwork(object):
                 # Modify output size to take into account shifts
                 if nn < self.num_layers:
                     layer_sizes[nn + 1] = self.layers[nn].output_dims
-
 
             elif self.layer_types[nn] == 'biconv':
 
@@ -471,8 +506,7 @@ class FFNetwork(object):
     # END FFNetwork._define_network
 
     def build_fit_variable_list(self, fit_parameter_list):
-        """Makes a list of variables from this network that will be fit given 
-        the fit_parameter_list"""
+        """Makes a list of variables from this network that will be fit given the fit_parameter_list"""
 
         var_list = []
         for layer in range(self.num_layers):
@@ -483,19 +517,19 @@ class FFNetwork(object):
         return var_list
     # END FFNetwork.build_fit_variable_list
 
-    def build_graph(self, inputs, params_dict=None, use_dropout=False):
+    def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
         """Build tensorflow graph for this network"""
 
         with tf.name_scope(self.scope):
             for layer in range(self.num_layers):
-                #if self.input_masks[layer] is None:
-                self.layers[layer].build_graph(inputs, params_dict, use_dropout=use_dropout)
-                #else:
-                #    self.layers[layer].build_graph(
-                #        tf.multiply(inputs, tf.constant(self.input_masks[layer])),
-                #        params_dict, use_dropout=use_dropout)
-
+                if self.time_expand[layer] > 0:
+                    self.layers[layer].build_graph(
+                        self.time_embed(inputs=inputs, batch_sz=batch_size, num_lags=self.time_expand[layer]),
+                        params_dict, use_dropout = use_dropout)
+                else:
+                    self.layers[layer].build_graph(inputs, params_dict, batch_size=batch_size, use_dropout=use_dropout)
                 inputs = self.layers[layer].outputs
+
     # END FFNetwork._build_graph
 
     def assign_model_params(self, sess):
@@ -526,6 +560,23 @@ class FFNetwork(object):
             # ...then sum over all layers
             reg_loss = tf.add_n(reg_ops)
         return reg_loss
+
+    @staticmethod
+    def time_embed(inputs, batch_sz, num_lags):
+        """Makes time-embedded input via matrix transformation"""
+        m = np.zeros((batch_sz, num_lags, batch_sz))
+        for lag in range(num_lags):
+            m[:, lag, :] = np.eye(batch_sz, k=-lag)
+
+        with tf.name_scope('time_embedding'):
+            # tmat = get_tmat(batch_sz=batch_sz, num_lags=nlags)
+            tmat = tf.constant(m, dtype=tf.float32, name='tmat')
+
+            expanded_inputs = tf.tensordot(tmat, inputs, axes=[2, 0])
+            expanded_inputs_tr = tf.transpose(expanded_inputs, [0, 2, 1])
+            expanded_inputs = tf.reshape(expanded_inputs_tr, (batch_sz, -1))
+
+        return expanded_inputs
 
 
 class SideNetwork(FFNetwork):
@@ -630,7 +681,7 @@ class SideNetwork(FFNetwork):
         self.layers[0].reg.scaffold_setup(self.num_units)
     # END SideNetwork.__init__
 
-    def build_graph(self, input_network, params_dict=None, use_dropout=False):
+    def build_graph(self, input_network, params_dict=None, batch_size=None, use_dropout=False):
         """Note this is different from other network build-graphs in that the 
         whole network graph, rather than just a link to its output, so that it 
         can be assembled here"""
@@ -669,6 +720,6 @@ class SideNetwork(FFNetwork):
 
             # Now standard graph-build (could just call the parent with inputs)
             for layer in range(self.num_layers):
-                self.layers[layer].build_graph(inputs, params_dict, use_dropout=use_dropout)
+                self.layers[layer].build_graph(inputs, params_dict, batch_size=batch_size, use_dropout=use_dropout)
                 inputs = self.layers[layer].outputs
     # END SideNetwork.build_graph
