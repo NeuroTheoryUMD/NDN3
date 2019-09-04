@@ -89,7 +89,7 @@ class TLayer(Layer):
             scope=scope,
             input_dims=input_dims,
             filter_dims=[num_lags, 1, 1],
-            output_dims=num_filters,  # Note difference from layer
+            output_dims=num_filters,  # Note difference from layer¸
             activation_func=activation_func,
             normalize_weights=normalize_weights,
             weights_initializer=weights_initializer,
@@ -100,8 +100,12 @@ class TLayer(Layer):
             log_activations=log_activations)
 
         self.num_lags = num_lags
+        self.input_dims[0] = self.input_dims[0]//num_lags
         # self.output_dims = deepcopy(input_dims)
-        self.output_dims[0] = self.num_filters
+        #self.output_dims[0] = self.num_filters # ORIGINAL
+        self.output_dims = input_dims.copy()
+        self.output_dims += [num_filters]
+        #self.internal_dims = [1, num_filters]  # removed lags, now just filters
 
         self.dilation = dilation
 
@@ -141,7 +145,7 @@ class TLayer(Layer):
 
             #padding = tf.constant([[0, self.filter_width], [0, 0]])
             padding = tf.constant([[0, self.num_lags], [0, 0]])
-            padded_filt = tf.pad(w_pn, padding)
+            padded_filt = tf.pad(tf.reverse(w_pn, [0]), padding)  # note the time-reversal
             #shaped_padded_filt = tf.reshape(padded_filt, [2*self.filter_width, 1, 1, self.num_filters])
             shaped_padded_filt = tf.reshape(padded_filt, [2*self.num_lags, 1, 1, self.num_filters])
 
