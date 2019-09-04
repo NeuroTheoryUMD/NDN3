@@ -508,7 +508,6 @@ class ConvLayer(Layer):
         self.num_shifts = num_shifts
         # Changes in properties from Layer - note this is implicitly multi-dimensional
         self.output_dims = [num_filters] + num_shifts[:]
-        print(self.scope, self.input_dims, self.output_dims)
     # END ConvLayer.__init__
 
     def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
@@ -1985,7 +1984,6 @@ class BiConvLayer(ConvLayer):
         if include_reflect:
             self.output_dims[0] *= 2
             print('Reflecting:', self.output_dims)
-        print('biconv', self.input_dims, self.internal_dims, self.output_dims)
     # END BiConvLayer.__init__
 
     def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
@@ -2038,8 +2036,6 @@ class BiConvLayer(ConvLayer):
             if conv_filter_dims[1] > 1:
                 strides[2] = self.shift_spacing
 
-            #print('SI', shaped_input)
-            #print('wsc', ws_conv)
             _pre = tf.nn.conv2d(shaped_input, ws_conv, strides, padding='SAME')
             pre = tf.add(_pre, biases)
 

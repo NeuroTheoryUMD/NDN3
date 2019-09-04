@@ -312,7 +312,6 @@ class FFNetwork(object):
                         dim0size = layer_sizes[nn][0]
 
                     conv_filter_size = [dim0size, network_params['conv_filter_widths'][nn], 1]
-                    print(conv_filter_size)
                     if layer_sizes[nn][2] > 1:
                         conv_filter_size[2] = network_params['conv_filter_widths'][nn]
 
@@ -446,13 +445,11 @@ class FFNetwork(object):
                 if network_params['conv_filter_widths'][nn] is None:
                     conv_filter_size = layer_sizes[nn]
                 else:
-                    print(self.layer_types[nn], layer_sizes[nn])
+                    #print(self.layer_types[nn], layer_sizes[nn])
                     if len(layer_sizes[nn]) > 3:
                         dim0size = layer_sizes[nn][0]*np.prod(layer_sizes[nn][3:])
-                        print(dim0size)
                     else:
                         dim0size = layer_sizes[nn][0]
-                        print(dim0size, 'ugh')
 
                     conv_filter_size = [dim0size, network_params['conv_filter_widths'][nn], 1]
                     if layer_sizes[nn][2] > 1:
