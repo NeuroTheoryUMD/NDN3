@@ -37,7 +37,7 @@ class Regularization(object):
         """Constructor for Regularization class
         
         Args:
-            input_dims (int): dimension of input size (for building reg mats)
+            input_dims (list of ints): dimension of input size (for building reg mats)
             num_outputs (int): number of outputs (for normalization in norm2)
             vals (dict, optional): key-value pairs specifying value for each
                 type of regularization 

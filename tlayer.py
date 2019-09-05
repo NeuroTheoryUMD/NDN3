@@ -13,19 +13,20 @@ from layer import Layer
 
 # TODO: fix input/output dims so that multiple consecutive TLayers are possible
 class TLayer(Layer):
-    """Implementation of a temporal layer
+    """Implementation of a temporal layer, which uses temporal (and causal) convolutions to handle num_lags, without having it
+    present in input.
 
     Attributes:
-        filter_width (int): time spread
-        batch_size (int): the batch size is explicitly needed for this computation
-
+        Alterations from Layer: now num_lags is explicitly kept as input_dims[0] so temporal regularization can
+            by applied. All other dims are kept as-is.
+        Note the build_graph explicitly uses batch_size (which is passed in then)
     """
 
     def __init__(
             self,
             scope=None,
-            input_dims=None,  # this can be a list up to 3-dimensions
-            num_lags=None,
+            input_dims=None,  # this can be a list up to 3-dimensions (note should not include lags)
+            num_lags=1,
             num_filters=None,
             activation_func='lin',
             dilation=1,
@@ -42,12 +43,10 @@ class TLayer(Layer):
         Args:
             scope (str): name scope for variables and operations in layer
             input_dims (int or list of ints): size (and dimensionality) of the inputs to the layer. Should be in the
-                form of: [# temporal lags, # space dim1, # space dim2, other dimensions]
-                Thus, must be list: length 1 means temporal only, length 2 means one time and one space, etc
-                For TLayer: the number of lags should be 1, since they will be generated internally though num_lags.
-                    Altenatively, this will be moved over in constructor if num_lags = None
-                Default is none, which means will be determined at the build time
-            num_lags (int): number of lags to be generated within the TLayer (and operated on by filters)
+                form of: [# filts, # space dim1, # space dim2]. Note that num_lags is not a property of the input
+                and is handled separately (see below).
+                Default is none, which means will be determined at the build time.
+            num_lags (int): number of lags to be generated within the TLayer (and operated on by filters).
             num_filters (int): number of convolutional filters in layer
             filter_dims (int or list of ints): dimensions of input data
             shift_spacing (int): stride of convolution operation
@@ -73,23 +72,24 @@ class TLayer(Layer):
 
         """
 
-        #self.batch_size = batch_size
-        #self.filter_width = filter_width
-
+        # First format information for standard processing by Layer (parent)
+        assert len(input_dims) < 4, 'No lags can be included in input for temporal layer.'
         assert num_lags > 1, 'time_expand must be greater than 1 if using a temporal layer'
-        # Handle more than lags in dimension-0 if necessary
-        if input_dims[0]//num_lags > 1:
-            input_dims = [num_lags, input_dims[1], input_dims[2], input_dims[0]//num_lags]
 
-        # If output dimensions already established, just strip out num_filters
-        #  if isinstance(num_filters, list):
-        #      num_filters = num_filters[0]
+        # output_dims are preserved (from input_dims, with extra filters from different temporal convolutions
+        output_dims = input_dims.copy()
+        output_dims[0] *= num_filters
+
+        # Incorporate num_input_filters into first spatial dimension (all lumped together anyway), so that
+        # temporal regularization can be applied to first dimension
+        input_dims[1] *= input_dims[0]
+        input_dims[0] = num_lags
 
         super(TLayer, self).__init__(
             scope=scope,
             input_dims=input_dims,
             filter_dims=[num_lags, 1, 1],
-            output_dims=num_filters,  # Note difference from layer¸
+            output_dims=num_filters,
             activation_func=activation_func,
             normalize_weights=normalize_weights,
             weights_initializer=weights_initializer,
@@ -99,24 +99,23 @@ class TLayer(Layer):
             pos_constraint=pos_constraint,
             log_activations=log_activations)
 
+        # Note that num_lags is set explicitly here, and is not part of input_dims
         self.num_lags = num_lags
-        self.input_dims[0] = self.input_dims[0]//num_lags
-        # self.output_dims = deepcopy(input_dims)
-        #self.output_dims[0] = self.num_filters # ORIGINAL
-        self.output_dims = input_dims.copy()
-        self.output_dims += [num_filters]
-        #self.internal_dims = [1, num_filters]  # removed lags, now just filters
-
         self.dilation = dilation
+        self.output_dims = output_dims
 
         # ei_mask not useful at the moment
         self.ei_mask_var = None
 
         self.reg = Regularization(
-            #input_dims=[filter_width, 1, 1],
             input_dims=[num_lags, 1, 1],
             num_outputs=num_filters,
             vals=reg_initializer)
+
+        if activation_func == 'lin':
+            self.include_biases = False
+        else:
+            self.include_biases = True
 
     # END TLayer.__init__
 
@@ -124,8 +123,6 @@ class TLayer(Layer):
 
         #assert batch_size is not None, "must pass in batch_size to TLayer"
         num_inputs = self.input_dims[1]*self.input_dims[2]
-        if len(self.internal_dims) > 1:
-            num_inputs *= np.prod(self.internal_dims[1:])
 
         with tf.name_scope(self.scope):
             self._define_layer_variables()
@@ -149,14 +146,17 @@ class TLayer(Layer):
             #shaped_padded_filt = tf.reshape(padded_filt, [2*self.filter_width, 1, 1, self.num_filters])
             shaped_padded_filt = tf.reshape(padded_filt, [2*self.num_lags, 1, 1, self.num_filters])
 
-            # convolve
+            # Temporal convolution
             strides = [1, 1, 1, 1]
             dilations = [1, self.dilation, 1, 1]
             _pre = tf.nn.conv2d(shaped_input, shaped_padded_filt, strides, dilations=dilations, padding='SAME')
-            pre = tf.add(_pre, self.biases_var)
-            post = self._apply_act_func(pre)
 
-            self.outputs = tf.reshape(tf.transpose(post, [1, 0, 2, 3]), (batch_size, -1))
+            if self.include_biases:
+                _post = self._apply_act_func(tf.add(_pre, self.biases_var))
+            else:
+                _post = self._apply_act_func(_pre)
+
+            self.outputs = tf.reshape(tf.transpose(_post, [1, 0, 2, 3]), (batch_size, -1))
 
         if self.log:
             tf.summary.histogram('act_pre', pre)

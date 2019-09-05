@@ -18,7 +18,10 @@ class Layer(object):
 
     Attributes:
         scope (str): name scope for variables and operations in layer
-        input_dims (list): inputs to layer
+        input_dims (list of ints): 3-dimensional internal representation of dimensions of input, with input_dims[0]
+            combining num_filts and num_lags, and other two are spatial dimensions.
+        num_lags (int): number of lags, to disambiguate first dimension of input_dims, and specifically used for
+            temporal layers
         output_dims (list): outputs of layer
         outputs (tf Tensor): output of layer
         weights_ph (tf placeholder): placeholder for weights in layer
@@ -62,11 +65,10 @@ class Layer(object):
 
         Args:
             scope (str): name scope for variables and operations in layer
-            input_dims (int or list of ints): size (and dimensionality) of the inputs to the layer. Should be in the
-                form of: [# temporal lags, # space dim1, # space dim2, other dimensions]
-                Thus, must be list: length 1 means temporal only, length 2 means one time and one space, etc
-                Note that time-lag dimension is important for d2t and d2xt regularization, and spatial dimensions
-                are important for convolutions as well as regularization of d2x and d2xt. max_filt and max_space also
+            input_dims (int or list of ints): dimensionality, up to 4 dimensions. Should be in the
+                form of: [# filts, # space dim1, # space dim2, num_lags]
+                This will be converted to 3-dim internal representation where num_lags and # filt are combined,
+                and t-regularization will operate on first dim of internal rep. [also max_filt]
                 Default is none, which means will be determined at the build time
             output_dims (int or list of ints): size of outputs of layer, arranged as multi-dimensional list as well
             filter_dims (int or list of ints): dimensions of filters: if left blank will be determined by input_dims,
@@ -126,6 +128,14 @@ class Layer(object):
                 input_dims.append(1)
         else:
             input_dims = [1, input_dims, 1]
+        # Internal representation will be 3-dimensional, combining num_lags with input_dims[0]
+        if len(input_dims) > 3:
+            self.num_lags = input_dims[3]
+            input_dims[0] *= input_dims[3]
+        else:
+            self.num_lags = 1
+        self.input_dims = input_dims[:3].copy()
+
         if isinstance(output_dims, list):
             while len(output_dims) < 3:
                 output_dims.append(1)
@@ -134,28 +144,19 @@ class Layer(object):
             num_outputs = output_dims
             output_dims = [1, output_dims, 1]
 
-        # Internal dims allows for the first dimension to be multiplexed into many (e.g., filters x time lags)
-        # note that first dim of internal_dims will always be time lags unless length is 1
-        self.internal_dims = [input_dims[0]]  # this is by default number of lags (or filters from previous layer)
-        self.input_dims = input_dims[:3].copy()
-        if len(input_dims) > 3:
-            self.internal_dims += input_dims[3:]
-            self.input_dims[0] = np.prod(self.internal_dims)
-
         self.output_dims = output_dims[:]
         # default to have N filts for N outputs in base layer class
-        #print('layer', scope, self.input_dims, self.internal_dims)
+
+        # print('layer', scope, self.input_dims, self.internal_dims)
 
         if filter_dims is None:
-            if len(self.internal_dims) == 1:
+            if self.num_lags == 1:
                 filter_dims = self.input_dims
             else:
-                filter_dims = [self.internal_dims[0], self.input_dims[1], self.input_dims[2]] + self.internal_dims[1:]
+                filter_dims = self.input_dims + [self.num_lags]
 
         self.filter_dims = filter_dims[:]
-
         num_inputs = np.prod(self.filter_dims)
-
         self.num_filters = num_outputs
 
         # create excitatory/inhibitory mask
@@ -506,19 +507,19 @@ class ConvLayer(Layer):
         # ConvLayer-specific properties
         self.shift_spacing = shift_spacing
         self.num_shifts = num_shifts
+        self.dilation = dilation
         # Changes in properties from Layer - note this is implicitly multi-dimensional
         self.output_dims = [num_filters] + num_shifts[:]
     # END ConvLayer.__init__
 
     def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
 
-        assert params_dict is not None, 'Incorrect siLayer initialization.'
+        assert params_dict is not None, 'Incorrect ConvLayer initialization.'
         # Unfold siLayer-specific parameters for building graph
 
         with tf.name_scope(self.scope):
             self._define_layer_variables()
 
-            # Computation performed in the layer
             # Reshape of inputs (4-D):
             input_dims = [-1, self.input_dims[2], self.input_dims[1],
                           self.input_dims[0]]
@@ -542,15 +543,16 @@ class ConvLayer(Layer):
 
             ws_conv = tf.reshape(w_pn, conv_filter_dims)
 
-            # Make strides list
-            # check back later (this seems to not match with conv_filter_dims)
-            strides = [1, 1, 1, 1]
+            # Make strides and dilation lists
+            strides, dilation = [1, 1, 1, 1], [1, 1, 1, 1]
             if conv_filter_dims[1] > 1:
                 strides[1] = self.shift_spacing
+                dilation[1] = self.dilation
             if conv_filter_dims[2] > 1:
                 strides[2] = self.shift_spacing
+                strides[2] = self.dilation
 
-            _pre = tf.nn.conv2d(shaped_input, ws_conv, strides, padding='SAME')
+            _pre = tf.nn.conv2d(shaped_input, ws_conv, strides=strides, dilations=dilation, padding='SAME')
             pre = tf.add(_pre, self.biases_var)
 
             if self.ei_mask_var is None:
@@ -625,6 +627,7 @@ class ConvXYLayer(Layer):
 
         """
 
+        print('Not yet vetted in NDN3')
         # Process stim and filter dimensions
         # (potentially both passed in as num_inputs list)
         if isinstance(input_dims, list):

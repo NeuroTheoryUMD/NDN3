@@ -803,6 +803,7 @@ class NDN(object):
                 which FFNetwork to generate the prediction from
             layer_target (int, optional): index into layers of network_list[ffnet_target]
                 that specifies which layer to generate prediction from
+            use_dropout (Boolean): whether to use dropout, default is False
 
         Returns:
             numpy array: pred values from network_list[ffnet_target].layers[layer]
@@ -829,8 +830,8 @@ class NDN(object):
             data_indxs = np.arange(self.num_examples)
 
         # change data_pipe_type to feed_dict
-        #original_pipe_type = deepcopy(self.data_pipe_type)
-        #self.data_pipe_type = 'data_as_var'
+        # original_pipe_type = deepcopy(self.data_pipe_type)
+        # self.data_pipe_type = 'data_as_var'
 
         # Generate fake_output data and take care of data-filtering, in case necessary
         self.filter_data = False
