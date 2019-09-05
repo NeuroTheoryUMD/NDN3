@@ -195,7 +195,7 @@ class FFNetwork(object):
 
         layer_sizes = [self.input_dims] + network_params['layer_sizes']
         self.layers = []
-        self.time_expand = network_params['time_expand']
+        self.time_expand = network_params['time_expand'].copy()
         if len(self.time_expand) < self.num_layers:
             self.time_expand += [0]*(self.num_layers-len(self.time_expand))
         self.time_spread = np.sum(self.time_expand)
