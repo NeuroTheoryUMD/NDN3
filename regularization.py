@@ -171,21 +171,17 @@ class Regularization(object):
         """
 
         if (reg_type == 'd2t') or (reg_type == 'd2x') or (reg_type == 'd2xt'):
-            reg_mat = get_rmats.create_tikhonov_matrix(
-                self.input_dims, reg_type)
+            reg_mat = get_rmats.create_tikhonov_matrix(self.input_dims, reg_type)
             name = reg_type + '_laplacian'
         elif (reg_type == 'max') or (reg_type == 'max_filt') or (reg_type == 'max_space'):
-            reg_mat = get_rmats.create_maxpenalty_matrix(
-                self.input_dims, reg_type)
+            reg_mat = get_rmats.create_maxpenalty_matrix(self.input_dims, reg_type)
             name = reg_type + '_reg'
         elif reg_type == 'center':
-            reg_mat = get_rmats.create_maxpenalty_matrix(
-                self.input_dims, reg_type)
+            reg_mat = get_rmats.create_maxpenalty_matrix(self.input_dims, reg_type)
             name = reg_type + '_reg'
         elif reg_type == 'max_level':
             if self.blocks is not None:
-                reg_mat = get_rmats.create_maxpenalty_matrix(
-                    [len(self.blocks), 1, 1], 'max')
+                reg_mat = get_rmats.create_maxpenalty_matrix([len(self.blocks), 1, 1], 'max')
             else:
                 reg_mat = 0.0
             name = reg_type + '_reg'

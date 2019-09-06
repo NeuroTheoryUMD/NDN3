@@ -32,7 +32,11 @@ def create_tikhonov_matrix(stim_dims, reg_type, boundary_conditions=None):
         "laplacian", available here: 
         http://www.mathworks.com/matlabcentral/fileexchange/27279-laplacian-in-1d-2d-or-3d
         Written in Matlab by James McFarland, adapted into python by Dan Butts
-        
+
+        Currently, the no-boundary condition case for all but temporal dimension alone is untested and possibly wrong
+        due to the fact that it *seems* that the indexing in python flips the first and second dimensions and a
+        transpose is thus necessary at the early stage. Not a problem (it seems) because boundary conditions are
+        currently applied by default, which makes the edges zero....
     """
 
     if boundary_conditions is None:
@@ -78,6 +82,9 @@ def create_tikhonov_matrix(stim_dims, reg_type, boundary_conditions=None):
         assert reg_type == 'd2t', 'Can only do temporal reg for stimuli without spatial dims'
 
         Tmat = sp.spdiags(np.concatenate((et, -2 * et, et), axis=0), [-1, 0, 1], nLags, nLags)
+        # Python makes them transposed relative to matlab -- making the following necessary in
+        # order for the no-boundary conditions to work correctly
+        Tmat = np.transpose(Tmat)
         # if stim_params.boundary_conds(1) == -1 # if periodic boundary cond
         #    Tmat(end, 1) = 1;
         #    Tmat(1, end) = 1;
