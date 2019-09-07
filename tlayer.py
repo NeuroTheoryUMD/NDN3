@@ -167,7 +167,7 @@ class TLayer(Layer):
 
 
 class CaTentLayer(Layer):
-    """Implementation of calcium tent layer
+    """Implementation of calcium tent layer -- NOT YET UPDATED FOR CURRENT MODEL
 
     Attributes:
         filter_width (int): time spread
