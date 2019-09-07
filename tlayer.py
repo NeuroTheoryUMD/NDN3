@@ -73,7 +73,9 @@ class TLayer(Layer):
         """
 
         # First format information for standard processing by Layer (parent)
-        assert len(input_dims) < 4, 'No lags can be included in input for temporal layer.'
+        if len(input_dims) > 3:
+            assert input_dims[3] == num_lags, 'No lags can be included in input for temporal layer.'
+            input_dims = input_dims[:3]
         assert num_lags > 1, 'time_expand must be greater than 1 if using a temporal layer'
 
         # output_dims are preserved (from input_dims, with extra filters from different temporal convolutions

@@ -202,13 +202,16 @@ class FFNetwork(object):
 
         for nn in range(self.num_layers):
             # Add time lags to first input dimension
+            #print(nn, layer_sizes[nn])
             if self.time_expand[nn] > 0:
-                if layer_sizes[nn][0] > 1:
+                layer_sizes[nn] += [self.time_expand[nn]] # add number of lags to input dimesions
+                #print('after', layer_sizes[nn])
+                #if layer_sizes[nn][0] > 1:
                     #layer_sizes[nn] = [self.time_expand[nn]] + layer_sizes[nn][1:] + [layer_sizes[nn][0]]
-                    layer_sizes[nn] = [1] + layer_sizes[nn][1:] + [layer_sizes[nn][0]]
-                else:
+                #    layer_sizes[nn] = [1] + layer_sizes[nn][1:] + [layer_sizes[nn][0]]
+                #else:
                     #layer_sizes[nn] = [self.time_expand[nn]] + layer_sizes[nn][1:]
-                    layer_sizes[nn] = [1] + layer_sizes[nn][1:]
+                #    layer_sizes[nn] = [1] + layer_sizes[nn][1:]
 
             if self.layer_types[nn] == 'normal':
 
