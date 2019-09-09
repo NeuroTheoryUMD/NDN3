@@ -130,7 +130,8 @@ class TLayer(Layer):
             self._define_layer_variables()
 
             # make shaped input
-            shaped_input = tf.reshape(tf.transpose(inputs), [num_inputs, batch_size, 1, 1])
+            #shaped_input = tf.reshape(tf.transpose(inputs), [num_inputs, batch_size, 1, 1])
+            shaped_input = tf.reshape(tf.transpose(inputs), [num_inputs, -1, 1, 1])  # avoid using 'batch_size'
 
             if self.pos_constraint is not None:
                 w_p = tf.maximum(self.weights_var, 0.0)
@@ -158,7 +159,8 @@ class TLayer(Layer):
             else:
                 _post = self._apply_act_func(_pre)
 
-            self.outputs = tf.reshape(tf.transpose(_post, [1, 0, 2, 3]), (batch_size, -1))
+            #self.outputs = tf.reshape(tf.transpose(_post, [1, 0, 2, 3]), (batch_size, -1))
+            self.outputs = tf.reshape(tf.transpose(_post, [1, 0, 2, 3]), (-1, num_inputs*self.output_dims[0]))
 
         if self.log:
             tf.summary.histogram('act_pre', pre)
