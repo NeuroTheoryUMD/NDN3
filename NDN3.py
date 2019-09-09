@@ -880,7 +880,7 @@ class NDN(object):
 
                 indx_end = (batch_test + 1) * self.batch_size
                 if indx_end > data_indxs.shape[0]:
-                    indx_end = data_indx.shape[0]
+                    indx_end = data_indxs.shape[0]
 
                 batch_indxs_test = data_indxs[indx_beg:indx_end]
                 if self.data_pipe_type == 'data_as_var':
