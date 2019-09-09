@@ -7,3 +7,7 @@
 _build
 _static
 _templates
+__pycache__/create_reg_matrices.cpython-37.pyc
+*.pyc
+__pycache__/create_reg_matrices.cpython-37.pyc
+Utils/__pycache__/DanUtils.cpython-37.pyc

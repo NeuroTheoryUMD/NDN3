@@ -848,7 +848,9 @@ class NDN(object):
         else:
             batch_size_save = None
 
-        num_batches_test = data_indxs.shape[0] // self.batch_size
+        # Get prediction for complete range
+        #num_batches_test = data_indxs.shape[0] // self.batch_size
+        num_batches_test = np.ceil(data_indxs.shape[0]/self.batch_size).astype(int)
 
         # Place graph operations on CPU
         if not use_gpu:
@@ -862,33 +864,25 @@ class NDN(object):
         with tf.Session(graph=self.graph, config=temp_config) as sess:
 
             self._restore_params(sess, input_data, output_data)
+            t0 = 0  # default unless there is self.time_spread
 
             for batch_test in range(num_batches_test):
 
-                batch_indxs_test = data_indxs[batch_test * self.batch_size:(batch_test + 1) * self.batch_size]
-                if self.data_pipe_type == 'data_as_var':
-                    feed_dict = {self.indices: batch_indxs_test}
-                elif self.data_pipe_type == 'feed_dict':
-                    feed_dict = self._get_feed_dict(
-                        input_data=input_data,
-                        output_data=output_data,
-                        data_filters=None,
-                        batch_indxs=batch_indxs_test)
-                elif self.data_pipe_type == 'iterator':
-                    feed_dict = {self.iterator_handle: data_indxs}
-
-                if batch_test == 0:
-                    pred = sess.run(
-                        self.networks[ffnet_target].layers[layer_target].outputs,
-                        feed_dict=feed_dict)
+                if self.time_spread is None:
+                    indx_beg = batch_test * self.batch_size
                 else:
-                    pred = np.concatenate( (pred, sess.run(
-                        self.networks[ffnet_target].layers[layer_target].outputs,
-                        feed_dict=feed_dict)), axis=0)
+                    if self.time_spread < batch_test * self.batch_size:
+                        indx_beg = batch_test * self.batch_size - self.time_spread
+                        t0 = self.time_spread
+                    else:
+                        indx_beg = 0
+                        t0 = batch_test * self.batch_size
 
-            # Add last fraction (if batches did not include all data)
-            if pred.shape[0] < data_indxs.shape[0]:
-                batch_indxs_test = data_indxs[num_batches_test * self.batch_size:data_indxs.shape[0]]
+                indx_end = (batch_test + 1) * self.batch_size
+                if indx_end > data_indxs.shape[0]:
+                    indx_end = data_indx.shape[0]
+
+                batch_indxs_test = data_indxs[indx_beg:indx_end]
                 if self.data_pipe_type == 'data_as_var':
                     feed_dict = {self.indices: batch_indxs_test}
                 elif self.data_pipe_type == 'feed_dict':
@@ -899,8 +893,12 @@ class NDN(object):
                         batch_indxs=batch_indxs_test)
                 elif self.data_pipe_type == 'iterator':
                     feed_dict = {self.iterator_handle: data_indxs}
-                pred = np.concatenate((pred, sess.run(
-                    self.networks[ffnet_target].layers[layer_target].outputs, feed_dict=feed_dict)), axis=0)
+
+                pred_tmp = sess.run(self.networks[ffnet_target].layers[layer_target].outputs, feed_dict=feed_dict)
+                if batch_test == 0:
+                    pred = pred_tmp[t0:]
+                else:
+                    pred = np.concatenate((pred, pred_tmp[t0:]), axis=0)
 
         # change the data_pipe_type to original
         # self.data_pipe_type = original_pipe_type
