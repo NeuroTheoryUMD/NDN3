@@ -101,8 +101,8 @@ class Layer(object):
 
         """
 
-        _allowed_act_funcs = ['lin', 'relu', 'leaky_relu', 'softplus',
-                              'sigmoid', 'exp', 'tanh', 'quad', 'elu', 'requ']
+        _allowed_act_funcs = ['lin', 'relu', 'leaky_relu', 'softplus', 'exp',
+                              'sigmoid', 'tanh', 'quad', 'elu', 'requ']
 
         if activation_func in _allowed_act_funcs:
             self.act_func = activation_func

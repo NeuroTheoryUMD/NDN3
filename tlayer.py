@@ -84,8 +84,8 @@ class TLayer(Layer):
 
         # Incorporate num_input_filters into first spatial dimension (all lumped together anyway), so that
         # temporal regularization can be applied to first dimension
-        input_dims[1] *= input_dims[0]
-        input_dims[0] = num_lags
+        #input_dims[1] *= input_dims[0]
+        #input_dims[0] = num_lags
 
         super(TLayer, self).__init__(
             scope=scope,
@@ -124,15 +124,13 @@ class TLayer(Layer):
     def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
 
         #assert batch_size is not None, "must pass in batch_size to TLayer"
-        num_inputs = self.input_dims[1]*self.input_dims[2]
-
+        #num_inputs = self.input_dims[1]*self.input_dims[2]
+        num_inputs = np.prod(self.input_dims)
         with tf.name_scope(self.scope):
             self._define_layer_variables()
 
             # make shaped input
-            #shaped_input = tf.reshape(tf.transpose(inputs), [num_inputs, batch_size, 1, 1])
             shaped_input = tf.reshape(tf.transpose(inputs), [num_inputs, -1, 1, 1])  # avoid using 'batch_size'
-
             if self.pos_constraint is not None:
                 w_p = tf.maximum(self.weights_var, 0.0)
             else:
@@ -158,9 +156,7 @@ class TLayer(Layer):
                 _post = self._apply_act_func(tf.add(_pre, self.biases_var))
             else:
                 _post = self._apply_act_func(_pre)
-
-            #self.outputs = tf.reshape(tf.transpose(_post, [1, 0, 2, 3]), (batch_size, -1))
-            self.outputs = tf.reshape(tf.transpose(_post, [1, 0, 2, 3]), (-1, num_inputs*self.output_dims[0]))
+            self.outputs = tf.reshape(tf.transpose(_post, [1, 0, 2, 3]), (-1, np.prod(self.output_dims)))
 
         if self.log:
             tf.summary.histogram('act_pre', pre)
@@ -180,7 +176,6 @@ class CaTentLayer(Layer):
     def __init__(
             self,
             scope=None,
-            nlags=None,
             input_dims=None,  # this can be a list up to 3-dimensions
             output_dims=None,
             num_filters=None,

@@ -689,25 +689,9 @@ class NDN(object):
         # check input
         if type(input_data) is not list:
             input_data = [input_data]
-        if type(output_data) is not list:
-            output_data = [output_data]
-        if data_filters is not None:
-            self.filter_data = True
-            if type(data_filters) is not list:
-                data_filters = [data_filters]
-            assert len(data_filters) == len(output_data), \
-                'Number of data filters must match output data.'
         self.num_examples = input_data[0].shape[0]
-        for temp_data in input_data:
-            if temp_data.shape[0] != self.num_examples:
-                raise ValueError(
-                    'Input data dims must match across input_data.')
-        for nn, temp_data in enumerate(output_data):
-            if temp_data.shape[0] != self.num_examples:
-                raise ValueError('Output dim0 must match model values')
-            if self.filter_data:
-                assert data_filters[nn].shape == temp_data.shape, \
-                    'data_filter sizes must match output_data'
+        input_data, output_data, data_filters = self._data_format(input_data, output_data, data_filters)
+
         if data_indxs is None:
             data_indxs = np.arange(self.num_examples)
 
@@ -814,14 +798,16 @@ class NDN(object):
 
         """
 
+        # Make fake output_data for passing into model
+        num_outputs = len(self.ffnet_out)
+        output_data = [None] * num_outputs
+
         # check input
         if type(input_data) is not list:
             input_data = [input_data]
         self.num_examples = input_data[0].shape[0]
-        for temp_data in input_data:
-            if temp_data.shape[0] != self.num_examples:
-                raise ValueError(
-                    'Input data dims must match across input_data.')
+        input_data, output_data, data_filters = self._data_format(input_data, output_data, None)
+
         if data_indxs is None:
             data_indxs = np.arange(self.num_examples)
         if layer_target >= len(self.networks[ffnet_target].layers):
@@ -835,8 +821,6 @@ class NDN(object):
 
         # Generate fake_output data and take care of data-filtering, in case necessary
         self.filter_data = False
-        num_outputs = len(self.ffnet_out)
-        output_data = [None] * num_outputs
         for nn in range(num_outputs):
             output_data[nn] = np.zeros(
                 [self.num_examples, self.networks[self.ffnet_out[nn]].layers[-1].weights.shape[1]],
@@ -1254,34 +1238,8 @@ class NDN(object):
         self.num_examples = 0
         self.filter_data = False
 
-        # check input
-        if type(input_data) is not list:
-            input_data = [input_data]
-        if type(output_data) is not list:
-            output_data = [output_data]
-        if data_filters is not None:
-            self.filter_data = True
-            if type(data_filters) is not list:
-                data_filters = [data_filters]
-            assert len(data_filters) == len(output_data), \
-                'Number of data filters must match output data.'
-        self.num_examples = input_data[0].shape[0]
-        for temp_data in input_data:
-            if temp_data.shape[0] != self.num_examples:
-                raise ValueError(
-                    'Input data dims must match across input_data.')
-        for nn, temp_data in enumerate(output_data):
-            if temp_data.shape[0] != self.num_examples:
-                raise ValueError('Output dim0 must match model values')
-            # Protect single-dimension outputs
-            if len(temp_data.shape) == 1:
-                output_data[nn] = np.expand_dims(temp_data, axis=1)
-            if self.filter_data:
-                # Protect single-dimension outputs
-                if len(data_filters[nn].shape) == 1:
-                    data_filters[nn] = np.expand_dims(data_filters[nn], axis=1)
-                assert data_filters[nn].shape == temp_data.shape, \
-                    'data_filter sizes must match output_data'
+        # check inputs and outputs
+        input_data, output_data, data_filters = self._data_format(input_data, output_data, data_filters)
 
         # Check format of opt_params (and add some defaults)
         if opt_params is None:
@@ -1297,14 +1255,11 @@ class NDN(object):
         # Check values entered
         if learning_alg is 'adam':
             if opt_params['epochs_ckpt'] is not None and output_dir is None:
-                raise ValueError(
-                    'output_dir must be specified to save model')
+                raise ValueError('output_dir must be specified to save model')
             if opt_params['epochs_summary'] is not None and output_dir is None:
-                raise ValueError(
-                    'output_dir must be specified to save summaries')
+                raise ValueError('output_dir must be specified to save summaries')
             if opt_params['early_stop'] > 0 and test_indxs is None:
-                raise ValueError(
-                    'test_indxs must be specified for early stopping')
+                raise ValueError('test_indxs must be specified for early stopping')
 
         # build datasets if using 'iterator' pipeline
         if self.data_pipe_type is 'iterator':
@@ -1977,6 +1932,37 @@ class NDN(object):
         with open(save_file, 'wb') as f:
             dill.dump(tmp_ndn, f)
         print('Model pickled to %s' % save_file)
+    # END NDN3.save_model
+
+    def _data_format(self, input_data, output_data, data_filters=None):
+
+        if type(input_data) is not list:
+            input_data = [input_data]
+        if type(output_data) is not list:
+            output_data = [output_data]
+        if data_filters is not None:
+            self.filter_data = True
+            if type(data_filters) is not list:
+                data_filters = [data_filters]
+            assert len(data_filters) == len(output_data), 'Number of data filters must match output data.'
+        self.num_examples = input_data[0].shape[0]
+        for temp_data in input_data:
+            if temp_data.shape[0] != self.num_examples:
+                raise ValueError('Input data dims must match across input_data.')
+        for nn, temp_data in enumerate(output_data):
+            if temp_data.shape[0] != self.num_examples:
+                raise ValueError('Output dim0 must match model values')
+            if len(temp_data.shape) < 2:
+                output_data[nn] = np.expand_dims(temp_data, axis=1)
+            # Protect single-dimension outputs
+            if len(temp_data.shape) == 1:
+                output_data[nn] = np.expand_dims(temp_data, axis=1)
+            if self.filter_data:
+                # Protect single-dimension outputs
+                if len(data_filters[nn].shape) == 1:
+                    data_filters[nn] = np.expand_dims(data_filters[nn], axis=1)
+                assert data_filters[nn].shape == output_data[nn].shape, 'data_filter sizes must match output_data'
+        return input_data, output_data, data_filters
 
     # noinspection PyInterpreter
     @classmethod

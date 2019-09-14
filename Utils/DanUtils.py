@@ -199,36 +199,45 @@ def spatial_spread(filters, axis=0):
 # END spatial_spread
 
 
-def compute_spatiotemporal_filters(ndn_mod, tbasis_select=-1):
+def tbasis_recover_filters(ndn_mod):
+
+    assert np.prod(ndn_mod.networks[0].layers[0].filter_dims[1:]) == 1, 'only works with temporal-only basis'
+
+    tkerns = ndn_mod.networks[0].layers[0].weights
+    num_lags, num_tkerns = tkerns.shape
+    non_lag_dims = np.prod(ndn_mod.networks[0].layers[1].input_dims) // num_tkerns
+    num_filts = ndn_mod.networks[0].layers[1].weights.shape[1]
+    ws = np.reshape(ndn_mod.networks[0].layers[1].weights, [non_lag_dims, num_tkerns, num_filts])
+    # num_lags = ndn_mod.networks[0].layers[0].num_lags
+    ks = np.reshape(np.matmul( tkerns, ws), [non_lag_dims*num_lags, num_filts])
+    # ks = np.zeros([non_lag_dims*num_lags, num_filts])
+
+    return ks
+
+
+def compute_spatiotemporal_filters(ndn_mod):
 
     # Check to see if there is a temporal layer first
+    num_lags = ndn_mod.networks[0].layers[0].num_lags
     if np.prod(ndn_mod.networks[0].layers[0].filter_dims[1:]) == 1:  # then likely temporal basis
-        if ndn_mod.networks[0].layers[1].filter_dims[2] == 1:  # then one-dimensional spatial
-            ks = tbasis_recover_filters(ndn_mod)
-            num_lags = ndn_mod.networks[0].layers[0].filter_dims[0]
-            filter_width = ndn_mod.networks[0].layers[1].filter_dims[1]
-        else:  # tbasis present, but 2-dimensional spatial
-            dims = ndn_mod.networks[0].layers[1].filter_dims
-            kraw = np.reshape(ndn_mod.networks[0].layers[1].weights.copy(),
-                              [dims[2], dims[1], dims[0], ndn_mod.networks[0].layers[1].weights.shape[1]])
-            if tbasis_select == -1:
-                ks = np.reshape(np.sum(kraw, axis=2),
-                                [dims[1], dims[2], ndn_mod.networks[0].layers[1].weights.shape[1]])
-            else:
-                ks = np.reshape(kraw[:, :, tbasis_select, :],
-                                [dims[1], dims[2], ndn_mod.networks[0].layers[1].weights.shape[1]])
-            # repurpose variables for just displaying spatial components
-            num_lags = ndn_mod.networks[0].layers[1].filter_dims[1]
-            filter_width = ndn_mod.networks[0].layers[1].filter_dims[2]
-    else:  # tbasis absent,
-        ks = ndn_mod.networks[0].layers[0].weights
-        num_lags, filter_width = ndn_mod.networks[0].layers[0].filter_dims[:2]
+        ks_flat = tbasis_recover_filters(ndn_mod)
+        sp_dims = ndn_mod.networks[0].layers[1].filter_dims[1:]
+        other_dims = ndn_mod.networks[0].layers[1].filter_dims[0] // ndn_mod.networks[0].layers[0].num_filters
+    else:
+        ks_flat = ndn_mod.networks[0].layers[0].weights
+        sp_dims = ndn_mod.networks[0].layers[0].filter_dims[1:3]
+        other_dims = ndn_mod.networks[0].layers[0].filter_dims[0] // num_lags
+    num_filters = ks_flat.shape[-1]
 
-    # Also make able to work with spatial-only RFs by manipulating variables
-    if num_lags == 1:
-        num_lags = ndn_mod.networks[0].layers[0].filter_dims[2]
-
-    num_filters = ks.shape[1]
+    # Reshape filters with other_dims tucked into first spatial dimension (on outside)
+    if sp_dims[1] == 1:
+        ks = np.reshape(np.transpose(
+            np.reshape(ks_flat, [sp_dims[0], other_dims, num_lags, num_filters]), [1, 0, 2, 3]),
+            [sp_dims[0]*other_dims, num_lags, num_filters])
+    else:
+        ks = np.reshape(np.transpose(
+            np.reshape(ks_flat, [sp_dims[1], sp_dims[0], other_dims, num_lags, num_filters]), [2, 0, 1, 3, 4]),
+            [sp_dims[1], sp_dims[0]*other_dims, num_lags, num_filters])
 
     return ks
 # END compute_spatiotemporal_filters
@@ -238,32 +247,36 @@ def plot_filters(ndn_mod=None, filters=None, filter_dims=None, tbasis_select=-1,
     """Throw in NDN_mod to do defaults. Can also through in ks directly, but must be either 2-d (weights x filter)
     with filter_dims provided, or 3-d (num_lags, num_space, num_filt)"""
 
-    temporal_layer_present = False
     ks = filters
+    temporal_basis_present = False
     if ndn_mod is None:
         assert ks is not None, 'Must supply filters or ndn_mod'
+        num_filters = ks.shape[-1]
         if filter_dims is not None:
-            num_lags = filter_dims[0]
-            filter_width = filter_dims[1]
-            num_filters = ks.shape[-1]
+            ks = np.reshape(filter_dims[1], filter_dims[0], num_filters)
         else:
             assert len(ks.shape) == 3, 'filter dims must be provided or ks must be reshaped into 3d'
-            num_lags = ks.shape[1]
-            filter_width = ks.shape[0]
-            num_filters = ks.shape[2]
     else:
-        ks = compute_spatiotemporal_filters(ndn_mod=ndn_mod, tbasis_select=tbasis_select)
-        num_lags, filter_width = ndn_mod.networks[0].layers[0].filter_dims[:2]
-        num_filters = ks.shape[1]
+        ks = compute_spatiotemporal_filters(ndn_mod=ndn_mod)
         if np.prod(ndn_mod.networks[0].layers[0].filter_dims[1:]) == 1:
-            temporal_layer_present = True
-            filter_width = ndn_mod.networks[0].layers[1].filter_dims[1]
+            temporal_basis_present = True
 
-    if temporal_layer_present:
+    if len(ks.shape) > 3:
+        # Must remake into 2-d filters
+        num_lags, num_filters = ks.shape[2:]
+        if num_lags == 1:
+            ks = ks[:, :, 0, :]  # removes lag dimension
+        else:
+            if tbasis_select < 0:
+                ks = np.sum(ks, axis=2)
+            else:
+                ks = ks[:, :, tbasis_select, :]
+    else:
+        num_filters = ks.shape[2]
+
+    if temporal_basis_present:
         plt.plot(ndn_mod.networks[0].layers[0].weights)
         plt.title('Temporal bases')
-
-    ks = np.reshape(ks, [num_lags * filter_width, num_filters])
 
     if num_filters/10 == num_filters//10:
         cols = 10
@@ -281,13 +294,18 @@ def plot_filters(ndn_mod=None, filters=None, filter_dims=None, tbasis_select=-1,
 
     fig, ax = plt.subplots(nrows=rows, ncols=cols)
     fig.set_size_inches(18 / 6 * cols, 7 / 4 * rows)
+    plt_scale = np.max(abs(ks))
+
     for nn in range(num_filters):
         ax = plt.subplot(rows, cols, nn + 1)
         if flipxy:
-            k = np.reshape(ks[:, nn], [filter_width, num_lags])
+            #k = np.reshape(ks[:, nn], [filter_width, num_lags])
+            k = ks[:, :, nn]
         else:
-            k = np.transpose(np.reshape(ks[:, nn], [filter_width, num_lags]))
-        plt.imshow(k, cmap='Greys', interpolation='none', vmin=-max(abs(ks[:, nn])), vmax=max(abs(ks[:, nn])), aspect='auto')
+            #k = np.transpose(np.reshape(ks[:, nn], [filter_width, num_lags]))
+            k = np.transpose(ks[:, :, nn])
+
+        plt.imshow(k, cmap='Greys', interpolation='none', vmin=-plt_scale, vmax=plt_scale, aspect='auto')
         ax.set_yticklabels([])
         ax.set_xticklabels([])
     plt.show()
@@ -820,27 +838,7 @@ def matlab_export(filename, variable_list):
     sio.savemat(filename, matdata)
 
 
-def tbasis_recover_filters(ndn_mod):
-
-    assert np.prod(ndn_mod.networks[0].layers[0].filter_dims[1:]) == 1, 'only works with temporal-only basis'
-
-    idims = ndn_mod.networks[0].layers[1].filter_dims
-    nlags = ndn_mod.networks[0].layers[0].filter_dims[0]
-    num_filts = ndn_mod.networks[0].layers[1].weights.shape[1]
-    tkerns = ndn_mod.networks[0].layers[0].weights
-
-    ks = np.zeros([idims[1]*idims[2]*nlags, num_filts])
-    for nn in range(num_filts):
-        w = np.reshape(ndn_mod.networks[0].layers[1].weights[:, nn], [idims[2], idims[1], idims[0]])
-        k = np.zeros([idims[2], idims[1], nlags])
-        for yy in range(idims[2]):
-            for xx in range(idims[1]):
-                k[yy, xx, :] = np.matmul(tkerns, w[yy, xx, :])
-        ks[:, nn] = np.reshape(k, idims[1]*idims[2]*nlags)
-
-    return ks
-
-def side_ei_analyze( side_ndn ):
+def side_ei_analyze(side_ndn):
 
     num_space = int(side_ndn.networks[0].input_dims[1])
     num_cells = side_ndn.network_list[1]['layer_sizes'][-1]
