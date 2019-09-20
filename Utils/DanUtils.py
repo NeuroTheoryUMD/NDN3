@@ -286,7 +286,7 @@ def plot_filters(ndn_mod=None, filters=None, filter_dims=None, tbasis_select=-1,
         cols = 6
     elif num_filters / 5 == num_filters // 5:
         cols = 5
-    elif num_filters < 5:
+    elif num_filters < 10:
         cols = num_filters
     else:
         cols = 8

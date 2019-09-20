@@ -1187,7 +1187,12 @@ class NDN(object):
             opt_params=None,
             output_dir=None,
             silent=False):
-        """Network training function
+        """Network training function. Note that the "early_stop_mode" is a critical part of the training, and can
+        be set to the following:
+            0: will stop after a certain number of iterations (specified by 'epochs_training')
+            1: will use early stopping on test data -- note in both cases regulariation
+            2: will use early stopping on training data
+            3: will use delta criteria for stoppying (more detail?)
 
         Args:
             input_data (list): input to network; each element should be a
@@ -1432,13 +1437,10 @@ class NDN(object):
         if self.data_pipe_type != 'data_as_var':
             assert self.batch_size is not None, 'Need to assign batch_size to train.'
         early_stop_mode = opt_params['early_stop_mode']
-        MAPest = False
-        # flag early stop mode > 10
+        MAPest = True  # always use MAP (include regularization penalty into early stopping)
+        # make compatible with previous versions that used mode 11'
         if early_stop_mode > 10:
-            MAPest = True
-            early_stop_mode += -10
-            if not silent:
-                print("MAP estimation early stop mode %d activated." %(early_stop_mode))
+            early_stop_mode = 1
 
         if early_stop_mode > 0:
             prev_costs = np.multiply(np.ones(opt_params['early_stop']), float('NaN'))
@@ -1611,14 +1613,22 @@ class NDN(object):
                     mean_before = np.nanmean(prev_costs)
 
                 if (self.data_pipe_type == 'data_as_var') or (self.data_pipe_type == 'feed_dict'):
+
+                    if early_stop_mode == 2:
+                        data_indxs = train_indxs
+                    else:
+                        data_indxs = test_indxs
+
                     cost_test = self._get_test_cost(
                         sess=sess,
                         input_data=input_data,
                         output_data=output_data,
                         data_filters=data_filters,
-                        test_indxs=test_indxs,
+                        test_indxs=data_indxs,
                         test_batch_size=opt_params['batch_size'])
                 elif self.data_pipe_type == 'iterator':
+                    assert not early_stop_mode == 2, 'curently doesnt work for esm 2'
+
                     cost_test = self._get_test_cost(
                         sess=sess,
                         input_data=input_data,
@@ -1646,7 +1656,7 @@ class NDN(object):
                     best_epoch = epoch
                     # chkpt model if desired
                     if output_dir is not None:
-                        if early_stop_mode == 1:
+                        if (early_stop_mode == 1) or (early_stop_mode == 2):
                             save_file = os.path.join(output_dir, 'bstmods', 'best_model')
                             self.checkpoint_model(sess, save_file)
                             chkpted = True
@@ -1655,9 +1665,8 @@ class NDN(object):
                             self.checkpoint_model(sess, save_file)
                             chkpted = True
 
-                if early_stop_mode == 1:
-                    if (epoch > opt_params['early_stop'] and
-                            mean_now >= mean_before):  # or equivalently delta <= 0
+                if (early_stop_mode == 1) or (early_stop_mode == 2):
+                    if epoch > opt_params['early_stop'] and mean_now >= mean_before:  # or equivalently delta <= 0
                         if not silent:
                             print('\n*** early stop criteria met...stopping train now...')
                             print('     ---> number of epochs used: %d,  ' 
