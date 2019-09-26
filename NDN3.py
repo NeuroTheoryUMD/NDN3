@@ -345,9 +345,7 @@ class NDN(object):
             if self.time_spread is None:
                 data_out = self.data_out_batch[nn]
             else:
-                data_out = tf.slice(self.data_out_batch[nn],
-                                    [self.time_spread, 0],
-                                    [self.batch_size-self.time_spread, -1])
+                data_out = tf.slice(self.data_out_batch[nn], [self.time_spread, 0], [-1, -1])
 
             if self.filter_data:
                 # this will zero out predictions where there is no data, matching Robs here
@@ -361,11 +359,10 @@ class NDN(object):
                 #nt = tf.cast(tf.shape(pred)[0], tf.float32)
                 nt = tf.constant(self.batch_size, dtype=tf.float32)
             else:
-                pred = tf.slice(pred,
-                                [self.time_spread, 0],
-                                [self.batch_size-self.time_spread, -1])
+                pred = tf.slice(pred, [self.time_spread, 0], [-1, -1])  # [self.batch_size-self.time_spread, -1])
                 # effective_batch_size is self.batch_size - self.time_spread
-                nt = tf.constant(self.batch_size - self.time_spread, dtype=tf.float32)
+                #nt = tf.constant(self.batch_size - self.time_spread, dtype=tf.float32)
+                nt = tf.cast(tf.shape(pred)[0]-self.time_spread, tf.float32)
 
             # define cost function
             if self.noise_dist == 'gaussian':
@@ -1180,6 +1177,7 @@ class NDN(object):
             output_data=None,
             train_indxs=None,
             test_indxs=None,
+            blocks=None,  # Added
             fit_variables=None,
             use_dropout=True,
             data_filters=None,
@@ -1342,15 +1340,28 @@ class NDN(object):
             if self.data_pipe_type is 'data_as_var':
                 # select learning algorithm
                 if learning_alg is 'adam':
-                    epoch = self._train_adam(
-                        sess=sess,
-                        train_writer=train_writer,
-                        test_writer=test_writer,
-                        train_indxs=train_indxs,
-                        test_indxs=test_indxs,
-                        opt_params=opt_params,
-                        output_dir=output_dir,
-                        silent=silent)
+                    if blocks is None:
+                        epoch = self._train_adam(
+                            sess=sess,
+                            train_writer=train_writer,
+                            test_writer=test_writer,
+                            train_indxs=train_indxs,
+                            test_indxs=test_indxs,
+                            opt_params=opt_params,
+                            output_dir=output_dir,
+                            silent=silent)
+                    else:
+                        epoch = self._train_adam_block(
+                            sess=sess,
+                            train_writer=train_writer,
+                            test_writer=test_writer,
+                            block_inds=blocks,
+                            train_blocks=train_indxs,
+                            test_blocks=test_indxs,
+                            opt_params=opt_params,
+                            output_dir=output_dir,
+                            silent=silent)
+
                 elif learning_alg is 'lbfgs':
                     self.train_step.minimize(
                         sess, feed_dict={self.indices: train_indxs})
@@ -1361,18 +1372,30 @@ class NDN(object):
             elif self.data_pipe_type is 'feed_dict':
                 # select learning algorithm
                 if learning_alg is 'adam':
-                    epoch = self._train_adam(
-                        sess=sess,
-                        train_writer=train_writer,
-                        test_writer=test_writer,
-                        train_indxs=train_indxs,
-                        test_indxs=test_indxs,
-                        input_data=input_data,
-                        output_data=output_data,
-                        data_filters=data_filters,
-                        opt_params=opt_params,
-                        output_dir=output_dir,
-                        silent=silent)
+                    if blocks is None:
+                        epoch = self._train_adam(
+                            sess=sess,
+                            train_writer=train_writer,
+                            test_writer=test_writer,
+                            train_indxs=train_indxs,
+                            test_indxs=test_indxs,
+                            input_data=input_data,
+                            output_data=output_data,
+                            data_filters=data_filters,
+                            opt_params=opt_params,
+                            output_dir=output_dir,
+                            silent=silent)
+                    else:
+                        epoch = self._train_adam_block(
+                            sess=sess,
+                            train_writer=train_writer,
+                            test_writer=test_writer,
+                            block_inds=blocks,
+                            train_blocks=train_indxs,
+                            test_blocks=test_indxs,
+                            opt_params=opt_params,
+                            output_dir=output_dir,
+                            silent=silent)
 
                 elif learning_alg is 'lbfgs':
                     feed_dict = self._get_feed_dict(
@@ -1764,6 +1787,326 @@ class NDN(object):
                     data_filters[i][batch_indxs, :]
         return feed_dict
     # END _get_feed_dict
+
+    # REDUNDANT TO WORK DIFFERENTLY
+    def _train_adam_block(
+            self,
+            sess=None,
+            train_writer=None,
+            test_writer=None,
+            train_blocks=None,  # here
+            test_blocks=None,  # here
+            block_inds=None,  # here
+            input_data=None,
+            output_data=None,
+            data_filters=None,
+            #dataset_tr=None,
+            #dataset_test=None,
+            opt_params=None,
+            output_dir=None,
+            silent=False):
+        """Training function for adam optimizer to clean up code in `train`"""
+
+        epochs_training = opt_params['epochs_training']
+        epochs_ckpt = opt_params['epochs_ckpt']
+        epochs_summary = opt_params['epochs_summary']
+        # Inherit batch size if relevant
+        self.batch_size = opt_params['batch_size']
+        if self.data_pipe_type != 'data_as_var':
+            assert self.batch_size is not None, 'Need to assign batch_size to train.'
+        early_stop_mode = opt_params['early_stop_mode']
+        MAPest = True  # always use MAP (include regularization penalty into early stopping)
+        # make compatible with previous versions that used mode 11'
+        if early_stop_mode > 10:
+            early_stop_mode = 1
+
+        if early_stop_mode > 0:
+            prev_costs = np.multiply(np.ones(opt_params['early_stop']), float('NaN'))
+
+        #num_batches_tr = train_indxs.shape[0] // opt_params['batch_size']
+        num_batches_tr = len(train_blocks)
+        num_batches_te = len(test_blocks)
+        assert num_batches_tr+num_batches_te == len(block_inds), 'Incorrect number of train/test blocks.'
+
+        if opt_params['run_diagnostics']:
+            run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+            run_metadata = tf.RunMetadata()
+        else:
+            run_options = None
+            run_metadata = None
+
+        # build iterator handles if using that input pipeline type
+        if self.data_pipe_type == 'iterator':
+            # build iterator object to access elements from dataset
+            iterator_tr = dataset_tr.make_one_shot_iterator()
+            # get string handle of iterator
+            iter_handle_tr = sess.run(iterator_tr.string_handle())
+
+            if test_indxs is not None:
+                # build iterator object to access elements from dataset
+                iterator_test = dataset_test.make_one_shot_iterator()
+                # get string handle of iterator
+                iter_handle_test = sess.run(iterator_test.string_handle())
+
+        # used in early_stopping
+        best_epoch = 0
+        best_cost = float('Inf')
+        chkpted = False
+
+        # if self.time_spread is not None:
+        # get number of batches and their order for train indxs
+        #   num_batches_tr = train_indxs.shape[0] // self.batch_size
+        batch_order = np.arange(num_batches_tr)
+
+        # start training loop
+        for epoch in range(epochs_training):
+
+            # shuffle data before each pass
+            #if self.time_spread is None:
+            #    train_indxs_perm = np.random.permutation(train_indxs)
+            #else:
+            batch_order_perm = np.random.permutation(batch_order)
+
+            # pass through dataset once
+            for batch in range(num_batches_tr):
+
+                #if (self.data_pipe_type == 'data_as_var') or (self.data_pipe_type == 'feed_dict'):
+                    # get training indices for this batch
+                    # if self.time_spread is None:
+                    #    batch_indxs = train_indxs_perm[batch * opt_params['batch_size']:
+                    #                                   (batch + 1) * opt_params['batch_size']]
+                    #else:
+                    #    batch_indxs = train_indxs[batch_order_perm[batch] * self.batch_size:
+                    #                              (batch_order_perm[batch]+1) * self.batch_size]
+
+                # one step of optimization routine
+                if self.data_pipe_type == 'data_as_var':
+                    # get the feed_dict for batch_indxs
+                    #feed_dict = {self.indices: batch_indxs}
+                    feed_dict = {self.indices: block_inds[batch_order_perm[batch]]}
+                elif self.data_pipe_type == 'feed_dict':
+                    feed_dict = self._get_feed_dict(
+                        input_data=input_data,
+                        output_data=output_data,
+                        data_filters=data_filters,
+                        batch_indxs=block_inds[batch_order_perm[batch]])
+                        #batch_indxs=batch_indxs)
+                elif self.data_pipe_type == 'iterator':
+                    feed_dict = {self.iterator_handle: iter_handle_tr}
+
+                sess.run(self.train_step, feed_dict=feed_dict)
+
+            # print training updates -- recalcs all training data (no need to permute)
+            if opt_params['display'] is not None and not silent and \
+                    ((epoch % opt_params['display'] == opt_params['display']-1) or (epoch == 0)):
+
+                cost_tr, cost_test = 0, 0
+                for batch_tr in range(num_batches_tr):
+                    # Will be contiguous data: no need to change time-spread
+                    #batch_indxs_tr = train_indxs[batch_tr * opt_params['batch_size']:
+                    #                             (batch_tr+1) * opt_params['batch_size']]
+
+                    if self.data_pipe_type == 'data_as_var':
+                        #feed_dict = {self.indices: batch_indxs_tr}
+                        feed_dict = {self.indices: block_inds[batch_tr]}
+                    elif self.data_pipe_type == 'feed_dict':
+                        feed_dict = self._get_feed_dict(
+                            input_data=input_data,
+                            output_data=output_data,
+                            data_filters=data_filters,
+                            batch_indxs=block_inds[batch_tr])
+                            #batch_indxs=batch_indxs_tr)
+                    elif self.data_pipe_type == 'iterator':
+                        feed_dict = {self.iterator_handle: iter_handle_tr}
+
+                    cost_tr += sess.run(self.cost, feed_dict=feed_dict)
+
+                cost_tr /= num_batches_tr
+                reg_pen = sess.run(self.cost_reg)
+
+                if test_blocks is not None:
+                    if self.data_pipe_type == 'data_as_var' or self.data_pipe_type == 'feed_dict':
+                        cost_test = self._get_test_cost_block(
+                            sess=sess,
+                            input_data=input_data,
+                            output_data=output_data,
+                            data_filters=data_filters,
+                            test_blocks=test_blocks,
+                            block_inds=block_inds)
+                            #test_indxs=test_indxs,
+                            #test_batch_size=opt_params['batch_size'])
+                    elif self.data_pipe_type == 'iterator':
+                        cost_test = self._get_test_cost(
+                            sess=sess,
+                            input_data=input_data,
+                            output_data=output_data,
+                            data_filters=data_filters,
+                            test_indxs=iter_handle_test,
+                            test_batch_size=opt_params['batch_size'])
+
+                # print additional testing info
+                print('Epoch %04d:  avg train cost = %10.4f,  '
+                      'avg test cost = %10.4f,  '
+                      'reg penalty = %10.4f'
+                      % (epoch, cost_tr / np.sum(self.output_sizes),
+                         cost_test / np.sum(self.output_sizes),
+                         reg_pen / np.sum(self.output_sizes)))
+
+            # save model checkpoints
+            if epochs_ckpt is not None and (
+                    epoch % epochs_ckpt == epochs_ckpt - 1 or epoch == 0):
+                save_file = os.path.join(output_dir, 'ckpts', str('epoch_%05g.ckpt' % epoch))
+                self.checkpoint_model(sess, save_file)
+
+            # save model summaries
+            if epochs_summary is not None and ((epoch % epochs_summary == epochs_summary-1) or (epoch == 0)):
+
+                # TODO: what to use with feed_dict?
+                if opt_params['run_diagnostics']:
+                    summary = sess.run(
+                        self.merge_summaries,
+                        feed_dict=feed_dict,
+                        options=run_options,
+                        run_metadata=run_metadata)
+                    train_writer.add_run_metadata(run_metadata, 'epoch_%d' % epoch)
+                else:
+                    summary = sess.run(self.merge_summaries, feed_dict=feed_dict)
+                train_writer.add_summary(summary, epoch)
+                train_writer.flush()
+
+                if test_blocks is not None:
+                    if opt_params['run_diagnostics']:
+                        summary = sess.run(
+                            self.merge_summaries,
+                            feed_dict=feed_dict,
+                            options=run_options,
+                            run_metadata=run_metadata)
+                        test_writer.add_run_metadata(run_metadata, 'epoch_%d' % epoch)
+                    else:
+                        summary = sess.run(self.merge_summaries, feed_dict=feed_dict)
+                    test_writer.add_summary(summary, epoch)
+                    test_writer.flush()
+
+            if opt_params['early_stop'] > 0:
+
+                # if you want to suppress that useless warning
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", category=RuntimeWarning)
+                    mean_before = np.nanmean(prev_costs)
+
+                if (self.data_pipe_type == 'data_as_var') or (self.data_pipe_type == 'feed_dict'):
+
+                    if early_stop_mode == 2:
+                        data_blocks = train_blocks
+                    else:
+                        data_blocks = test_blocks
+
+                    cost_test = self._get_test_cost_block(
+                        sess=sess,
+                        input_data=input_data,
+                        output_data=output_data,
+                        data_filters=data_filters,
+                        test_blocks=data_blocks,
+                        block_inds=block_inds)
+                elif self.data_pipe_type == 'iterator':
+                    assert not early_stop_mode == 2, 'curently doesnt work for esm 2'
+
+                    cost_test = self._get_test_cost(
+                        sess=sess,
+                        input_data=input_data,
+                        output_data=output_data,
+                        data_filters=data_filters,
+                        test_indxs=iter_handle_test,
+                        test_batch_size=opt_params['batch_size'])
+
+                if MAPest:
+                    cost_test += sess.run(self.cost_reg)
+
+                prev_costs = np.roll(prev_costs, 1)
+                prev_costs[0] = cost_test
+
+                mean_now = np.nanmean(prev_costs)
+
+                delta = (mean_before - mean_now) / mean_before
+
+                # to check and refine the condition on chkpting best model
+                # print(epoch, delta, 'delta condition:', delta < 1e-4)
+
+                if cost_test < best_cost:
+                    # update best cost and the epoch that it happened at
+                    best_cost = cost_test
+                    best_epoch = epoch
+                    # chkpt model if desired
+                    if output_dir is not None:
+                        if (early_stop_mode == 1) or (early_stop_mode == 2):
+                            save_file = os.path.join(output_dir, 'bstmods', 'best_model')
+                            self.checkpoint_model(sess, save_file)
+                            chkpted = True
+                        elif (early_stop_mode == 2) and (delta < 5e-5):
+                            save_file = os.path.join(output_dir, 'bstmods', 'best_model')
+                            self.checkpoint_model(sess, save_file)
+                            chkpted = True
+
+                if (early_stop_mode == 1) or (early_stop_mode == 2):
+                    if epoch > opt_params['early_stop'] and mean_now >= mean_before:  # or equivalently delta <= 0
+                        if not silent:
+                            print('\n*** early stop criteria met...stopping train now...')
+                            print('     ---> number of epochs used: %d,  ' 
+                                  'end cost: %04f' % (epoch, cost_test))
+                            print('     ---> best epoch: %d,  '
+                                  'best cost: %04f\n' % (best_epoch, best_cost))
+                        # restore saved variables into tf Variables
+                        if output_dir is not None and chkpted and early_stop_mode > 0:
+                            # save_file exists only if chkpted is True
+                            self.saver.restore(sess, save_file)
+                            # delete files before break to clean up space
+                            shutil.rmtree(os.path.join(output_dir, 'bstmods'), ignore_errors=True)
+                        break
+                else:
+                    if mean_now >= mean_before:  # or equivalently delta <= 0
+                        if not silent:
+                            print('\n*** early stop criteria met...stopping train now...')
+                            print('     ---> number of epochs used: %d,  '
+                                  'end cost: %04f' % (epoch, cost_test))
+                            print('     ---> best epoch: %d,  '
+                                  'best cost: %04f\n' % (best_epoch, best_cost))
+                        # restore saved variables into tf Variables
+                        if output_dir is not None and chkpted and early_stop_mode > 0:
+                            # save_file exists only if chkpted is True
+                            self.saver.restore(sess, save_file)
+                            # delete files before break to clean up space
+                            shutil.rmtree(os.path.join(output_dir, 'bstmods'), ignore_errors=True)
+                        break
+        return epoch
+        #    return epoch
+        # END _train_adam_block
+
+    def _get_test_cost_block(self, sess, input_data, output_data, data_filters, test_blocks, block_inds):
+        """Utility function to clean up code in `_train_adam` method"""
+
+        num_batches_test = len(test_blocks)
+
+        cost_test = 0
+        for batch_test in range(num_batches_test):
+            # batch_indxs_test = test_indxs[batch_test * test_batch_size:(batch_test+1) * test_batch_size]
+            if self.data_pipe_type == 'data_as_var':
+                # feed_dict = {self.indices: batch_indxs_test}
+                feed_dict = {self.indices: block_inds[batch_test]}
+            elif self.data_pipe_type == 'feed_dict':
+                feed_dict = self._get_feed_dict(
+                    input_data=input_data,
+                    output_data=output_data,
+                    data_filters=data_filters,
+                    batch_indxs=block_inds[batch_test])
+                    #batch_indxs=batch_indxs_test)
+            elif self.data_pipe_type == 'iterator':
+                feed_dict = {self.iterator_handle: test_indxs}
+            cost_test += sess.run(self.cost, feed_dict=feed_dict)
+
+        cost_test /= num_batches_test
+
+        return cost_test
+    # END _get_test_cost_block
 
     def _build_dataset(self, input_data, output_data, data_filters=None,
                        indxs=None, batch_size=32, training_dataset=True):
