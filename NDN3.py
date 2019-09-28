@@ -746,10 +746,10 @@ class NDN(object):
                 elif self.data_pipe_type == 'iterator':
                     feed_dict = {self.iterator_handle: data_indxs}
 
-                    if batch_test == 0:
-                        unit_cost = sess.run(self.unit_cost, feed_dict=feed_dict)
-                    else:
-                        unit_cost = np.add(unit_cost, sess.run(self.unit_cost, feed_dict=feed_dict))
+                if batch_test == 0:
+                    unit_cost = sess.run(self.unit_cost, feed_dict=feed_dict)
+                else:
+                    unit_cost = np.add(unit_cost, sess.run(self.unit_cost, feed_dict=feed_dict))
 
                 ll_neuron = np.divide(unit_cost, num_batches_test)
 
