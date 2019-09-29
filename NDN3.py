@@ -14,7 +14,7 @@ import tensorflow as tf
 from ffnetwork import FFNetwork
 from ffnetwork import SideNetwork
 from NDNutils import concatenate_input_dims
-
+from NDNutils import process_blocks
 
 class NDN(object):
     """Tensorflow (tf) implementation of Neural Deep Network class
@@ -1149,10 +1149,6 @@ class NDN(object):
 
     # END Network._initialize_data_pipeline
 
-#    def _define_loss(self):
-#        """Loss function that will be used to optimize model parameters"""
-#        raise NotImplementedError
-
     def _define_optimizer(self, learning_alg='adam', opt_params=None,
                           var_list=None):
         """Define one step of the optimization routine
@@ -1835,7 +1831,14 @@ class NDN(object):
         if early_stop_mode > 0:
             prev_costs = np.multiply(np.ones(opt_params['early_stop']), float('NaN'))
 
-        #num_batches_tr = train_indxs.shape[0] // opt_params['batch_size']
+        #num_batches_tr = train_indxs.shape[0] // opt_params
+        if data_filters is None:  # then make basic data_filters
+            df = np.ones(output_data[0].shape)
+        else:
+            df = data_filters
+
+        block_lists, mod_df, comb_number = process_blocks( block_inds, df, self.batch_size, self.time_spread)
+        print(comb_number, 'to combine')
         num_batches_tr = len(train_blocks)
         num_batches_te = len(test_blocks)
         assert num_batches_tr+num_batches_te == len(block_inds), 'Incorrect number of train/test blocks.'
@@ -1880,7 +1883,7 @@ class NDN(object):
             batch_order_perm = np.random.permutation(batch_order)
 
             # pass through dataset once
-            for batch in range(num_batches_tr):
+            for batch in range(np.floor(num_batches_tr/comb_number)):
 
                 #if (self.data_pipe_type == 'data_as_var') or (self.data_pipe_type == 'feed_dict'):
                     # get training indices for this batch
@@ -1890,18 +1893,23 @@ class NDN(object):
                     #else:
                     #    batch_indxs = train_indxs[batch_order_perm[batch] * self.batch_size:
                     #                              (batch_order_perm[batch]+1) * self.batch_size]
+                batch_indxs = []
+                for nn in range(comb_number):
+                    batch_indxs = np.concatenate((indxs, block_lists[batch_order_perm[batch*comb_number+nn]]))
 
                 # one step of optimization routine
                 if self.data_pipe_type == 'data_as_var':
                     # get the feed_dict for batch_indxs
                     #feed_dict = {self.indices: batch_indxs}
-                    feed_dict = {self.indices: block_inds[batch_order_perm[batch]]}
+                    #feed_dict = {self.indices: block_inds[batch_order_perm[batch]]}
+                    feed_dict = {self.indices: batch_indxs}
                 elif self.data_pipe_type == 'feed_dict':
                     feed_dict = self._get_feed_dict(
                         input_data=input_data,
                         output_data=output_data,
-                        data_filters=data_filters,
-                        batch_indxs=block_inds[batch_order_perm[batch]])
+                        data_filters=mod_df,
+                        batch_indxs=batch_indxs)
+                        #batch_indxs=block_inds[batch_order_perm[batch]])
                         #batch_indxs=batch_indxs)
                 elif self.data_pipe_type == 'iterator':
                     feed_dict = {self.iterator_handle: iter_handle_tr}
@@ -1925,7 +1933,7 @@ class NDN(object):
                         feed_dict = self._get_feed_dict(
                             input_data=input_data,
                             output_data=output_data,
-                            data_filters=data_filters,
+                            data_filters=mod_df,
                             batch_indxs=block_inds[batch_tr])
                             #batch_indxs=batch_indxs_tr)
                     elif self.data_pipe_type == 'iterator':
@@ -1942,7 +1950,7 @@ class NDN(object):
                             sess=sess,
                             input_data=input_data,
                             output_data=output_data,
-                            data_filters=data_filters,
+                            data_filters=mod_df,
                             test_blocks=test_blocks,
                             block_inds=block_inds)
                             #test_indxs=test_indxs,
@@ -1958,11 +1966,9 @@ class NDN(object):
 
                 # print additional testing info
                 print('Epoch %04d:  avg train cost = %10.4f,  '
-                      'avg test cost = %10.4f,  '
-                      'reg penalty = %10.4f'
+                      'avg test cost = %10.4f,  reg penalty = %10.4f'
                       % (epoch, cost_tr / np.sum(self.output_sizes),
-                         cost_test / np.sum(self.output_sizes),
-                         reg_pen / np.sum(self.output_sizes)))
+                         cost_test / np.sum(self.output_sizes), reg_pen / np.sum(self.output_sizes)))
 
             # save model checkpoints
             if epochs_ckpt is not None and (
@@ -2017,7 +2023,7 @@ class NDN(object):
                         sess=sess,
                         input_data=input_data,
                         output_data=output_data,
-                        data_filters=data_filters,
+                        data_filters=mod_df,
                         test_blocks=data_blocks,
                         block_inds=block_inds)
                 elif self.data_pipe_type == 'iterator':
@@ -2027,7 +2033,7 @@ class NDN(object):
                         sess=sess,
                         input_data=input_data,
                         output_data=output_data,
-                        data_filters=data_filters,
+                        data_filters=mod_df,
                         test_indxs=iter_handle_test,
                         test_batch_size=opt_params['batch_size'])
 

@@ -496,6 +496,24 @@ def generate_spike_history(robs, nlags, neg_constraint=True, reg_par=0,
 # END generate_spike_history
 
 
+def process_blocks(block_inds, data_filters, batch_size=2000, skip=20):
+    """processes blocked-stimuli for train"""
+    mod_df = data_filters.copy()
+    val_inds = np.zeros(mod_df.shape[0])
+    num_blocks = block_inds.shape[0]
+    av_size = 0
+    block_lists = []
+    for nn in range(num_blocks):
+        val_inds[range(block_inds[nn, 0]+skip-1, block_inds[nn, 1])] = 1.0
+        av_size += np.max([block_inds[nn, 1] - block_inds[nn, 0] - skip+1, 0])
+        block_lists.append(np.array(range(block_inds[nn, 0]-1, block_inds[nn, 1]), dtype='int'))
+
+    comb_number = np.round(batch_size/av_size*num_blocks)
+    mod_df = np.multiply(data_filters, val_inds)
+
+    return block_lists, mod_df, comb_number
+
+
 def generate_xv_folds(nt, fold=5, num_blocks=3):
     """Will generate unique and cross-validation indices, but subsample in each block
         NT = number of time steps
