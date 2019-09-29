@@ -1844,9 +1844,11 @@ class NDN(object):
             df = deepcopy(data_filters)
 
         block_lists, mod_df, comb_number = process_blocks( block_inds, df, self.batch_size, self.time_spread)
-        print(comb_number, 'to combine')
+
         num_batches_tr = len(train_blocks)
         num_batches_te = len(test_blocks)
+        num_comb_batch_train_step = np.floor(num_batches_tr / comb_number).astype(int)
+
         assert num_batches_tr+num_batches_te == len(block_inds), 'Incorrect number of train/test blocks.'
 
         if opt_params['run_diagnostics']:
@@ -1889,7 +1891,7 @@ class NDN(object):
             batch_order_perm = np.random.permutation(batch_order)
 
             # pass through dataset once
-            for batch in range(np.floor(num_batches_tr/comb_number)):
+            for batch in range(num_comb_batch_train_step):
 
                 #if (self.data_pipe_type == 'data_as_var') or (self.data_pipe_type == 'feed_dict'):
                     # get training indices for this batch
@@ -1901,7 +1903,7 @@ class NDN(object):
                     #                              (batch_order_perm[batch]+1) * self.batch_size]
                 batch_indxs = []
                 for nn in range(comb_number):
-                    batch_indxs = np.concatenate((indxs, block_lists[batch_order_perm[batch*comb_number+nn]]))
+                    batch_indxs = np.concatenate((batch_indxs, block_lists[batch_order_perm[batch*comb_number+nn]]))
 
                 # one step of optimization routine
                 if self.data_pipe_type == 'data_as_var':
@@ -1931,16 +1933,15 @@ class NDN(object):
                     # Will be contiguous data: no need to change time-spread
                     #batch_indxs_tr = train_indxs[batch_tr * opt_params['batch_size']:
                     #                             (batch_tr+1) * opt_params['batch_size']]
-
                     if self.data_pipe_type == 'data_as_var':
                         #feed_dict = {self.indices: batch_indxs_tr}
-                        feed_dict = {self.indices: block_inds[batch_tr]}
+                        feed_dict = {self.indices: block_lists[batch_tr]}
                     elif self.data_pipe_type == 'feed_dict':
                         feed_dict = self._get_feed_dict(
                             input_data=input_data,
                             output_data=output_data,
                             data_filters=mod_df,
-                            batch_indxs=block_inds[batch_tr])
+                            batch_indxs=block_lists[batch_tr])
                             #batch_indxs=batch_indxs_tr)
                     elif self.data_pipe_type == 'iterator':
                         feed_dict = {self.iterator_handle: iter_handle_tr}
@@ -1958,7 +1959,7 @@ class NDN(object):
                             output_data=output_data,
                             data_filters=mod_df,
                             test_blocks=test_blocks,
-                            block_inds=block_inds)
+                            block_inds=block_lists)
                             #test_indxs=test_indxs,
                             #test_batch_size=opt_params['batch_size'])
                     elif self.data_pipe_type == 'iterator':
@@ -2031,7 +2032,7 @@ class NDN(object):
                         output_data=output_data,
                         data_filters=mod_df,
                         test_blocks=data_blocks,
-                        block_inds=block_inds)
+                        block_inds=block_lists)
                 elif self.data_pipe_type == 'iterator':
                     assert not early_stop_mode == 2, 'curently doesnt work for esm 2'
 
