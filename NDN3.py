@@ -1355,6 +1355,7 @@ class NDN(object):
                             test_writer=test_writer,
                             train_indxs=train_indxs,
                             test_indxs=test_indxs,
+                            data_filters=data_filters,
                             opt_params=opt_params,
                             output_dir=output_dir,
                             silent=silent)
@@ -1366,6 +1367,7 @@ class NDN(object):
                             block_inds=blocks,
                             train_blocks=train_indxs,
                             test_blocks=test_indxs,
+                            data_filters=data_filters,
                             opt_params=opt_params,
                             output_dir=output_dir,
                             silent=silent)
@@ -1401,6 +1403,7 @@ class NDN(object):
                             block_inds=blocks,
                             train_blocks=train_indxs,
                             test_blocks=test_indxs,
+                            data_filters=data_filters,
                             opt_params=opt_params,
                             output_dir=output_dir,
                             silent=silent)
@@ -1425,6 +1428,7 @@ class NDN(object):
                         test_writer=test_writer,
                         train_indxs=train_indxs,
                         test_indxs=test_indxs,
+                        data_filters=data_filters,
                         dataset_tr=dataset_tr,
                         dataset_test=dataset_test,
                         opt_params=opt_params,
@@ -1833,9 +1837,11 @@ class NDN(object):
 
         #num_batches_tr = train_indxs.shape[0] // opt_params
         if data_filters is None:  # then make basic data_filters
-            df = np.ones(output_data[0].shape)
+            df = []
+            for nn in range(len(output_data)):
+                df.append(np.ones(output_data[nn].shape, dtype='int'))
         else:
-            df = data_filters
+            df = deepcopy(data_filters)
 
         block_lists, mod_df, comb_number = process_blocks( block_inds, df, self.batch_size, self.time_spread)
         print(comb_number, 'to combine')

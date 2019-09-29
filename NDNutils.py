@@ -5,6 +5,7 @@ models.
 from __future__ import division
 from __future__ import print_function
 import numpy as np
+from copy import deepcopy
 from scipy.linalg import toeplitz
 
 
@@ -498,8 +499,12 @@ def generate_spike_history(robs, nlags, neg_constraint=True, reg_par=0,
 
 def process_blocks(block_inds, data_filters, batch_size=2000, skip=20):
     """processes blocked-stimuli for train"""
-    mod_df = data_filters.copy()
-    val_inds = np.zeros(mod_df.shape[0])
+
+    mod_df = deepcopy(data_filters)
+    if len(mod_df) > 1:  # then multiple outputs and data-filters (to deal with layer
+        print('WARNING: Multiple data_filters not implemented in block-processing.')
+
+    val_inds = np.zeros(mod_df[0].shape[0])
     num_blocks = block_inds.shape[0]
     av_size = 0
     block_lists = []
@@ -509,7 +514,8 @@ def process_blocks(block_inds, data_filters, batch_size=2000, skip=20):
         block_lists.append(np.array(range(block_inds[nn, 0]-1, block_inds[nn, 1]), dtype='int'))
 
     comb_number = np.round(batch_size/av_size*num_blocks)
-    mod_df = np.multiply(data_filters, val_inds)
+    for nn in range(len(data_filters)):
+        mod_df[nn] = np.multiply(data_filters[nn], val_inds)
 
     return block_lists, mod_df, comb_number
 
