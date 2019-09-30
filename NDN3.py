@@ -1903,8 +1903,8 @@ class NDN(object):
                     #                              (batch_order_perm[batch]+1) * self.batch_size]
                 batch_indxs = []
                 for nn in range(comb_number):
-                    batch_indxs = np.concatenate((batch_indxs, block_lists[batch_order_perm[batch*comb_number+nn]]))
-
+                    block_num = train_blocks[batch_order_perm[batch*comb_number+nn]]
+                    batch_indxs = np.concatenate((batch_indxs, block_lists[block_num]))
                 # one step of optimization routine
                 if self.data_pipe_type == 'data_as_var':
                     # get the feed_dict for batch_indxs
@@ -1941,7 +1941,7 @@ class NDN(object):
                             input_data=input_data,
                             output_data=output_data,
                             data_filters=mod_df,
-                            batch_indxs=block_lists[batch_tr])
+                            batch_indxs=block_lists[train_blocks[batch_tr]])
                             #batch_indxs=batch_indxs_tr)
                     elif self.data_pipe_type == 'iterator':
                         feed_dict = {self.iterator_handle: iter_handle_tr}
@@ -2116,13 +2116,13 @@ class NDN(object):
             # batch_indxs_test = test_indxs[batch_test * test_batch_size:(batch_test+1) * test_batch_size]
             if self.data_pipe_type == 'data_as_var':
                 # feed_dict = {self.indices: batch_indxs_test}
-                feed_dict = {self.indices: block_inds[batch_test]}
+                feed_dict = {self.indices: block_inds[test_blocks[batch_test]]}
             elif self.data_pipe_type == 'feed_dict':
                 feed_dict = self._get_feed_dict(
                     input_data=input_data,
                     output_data=output_data,
                     data_filters=data_filters,
-                    batch_indxs=block_inds[batch_test])
+                    batch_indxs=block_inds[test_blocks[batch_test]])
                     #batch_indxs=batch_indxs_test)
             elif self.data_pipe_type == 'iterator':
                 feed_dict = {self.iterator_handle: test_indxs}
