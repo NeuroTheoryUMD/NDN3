@@ -684,13 +684,14 @@ class NDN(object):
         """
 
         # check input
-        if type(input_data) is not list:
-            input_data = [input_data]
-        self.num_examples = input_data[0].shape[0]
         input_data, output_data, data_filters = self._data_format(input_data, output_data, data_filters)
 
         if data_indxs is None:
             data_indxs = np.arange(self.num_examples)
+
+        if self.batch_size is None:
+            self.batch_size = data_indxs.shape[0]
+            # note this could crash if batch_size too large. but crash cause should be clear...
 
         # build datasets if using 'iterator' pipeline
         #if self.data_pipe_type == 'iterator':
@@ -716,9 +717,6 @@ class NDN(object):
 
         with tf.Session(graph=self.graph, config=self.sess_config) as sess:
 
-            self._restore_params(
-                sess, input_data, output_data, data_filters=data_filters)
-
             if blocks is None:
                 if self.batch_size is not None:
                     batch_size = self.batch_size
@@ -726,14 +724,18 @@ class NDN(object):
                 else:
                     num_batches_test = 1
                     batch_size = data_indxs.shape[0]
+                mod_df = data_filters
             else:
+                block_lists, mod_df, _ = process_blocks(block_inds, df, skip=self.time_spread)
                 num_batches_test = len(data_indxs)
+
+            self._restore_params(sess, input_data, output_data, data_filters=mod_df)
 
             for batch_test in range(num_batches_test):
                 if blocks is None:
                     batch_indxs_test = data_indxs[batch_test*batch_size:(batch_test+1)*batch_size]
                 else:
-                    batch_indxs_test = blocks[data_indxs[batch_test]]
+                    batch_indxs_test = block_lists[data_indxs[batch_test]]
 
                 if self.data_pipe_type == 'data_as_var':
                     feed_dict = {self.indices: batch_indxs_test}
@@ -741,7 +743,7 @@ class NDN(object):
                     feed_dict = self._get_feed_dict(
                         input_data=input_data,
                         output_data=output_data,
-                        data_filters=data_filters,
+                        data_filters=mod_df,
                         batch_indxs=batch_indxs_test)
                 elif self.data_pipe_type == 'iterator':
                     feed_dict = {self.iterator_handle: data_indxs}
@@ -753,19 +755,19 @@ class NDN(object):
 
                 ll_neuron = np.divide(unit_cost, num_batches_test)
 
-            else:  # no batch-size given
-                if self.data_pipe_type == 'data_as_var':
-                    feed_dict = {self.indices: data_indxs}
-                elif self.data_pipe_type == 'feed_dict':
-                    feed_dict = self._get_feed_dict(
-                        input_data=input_data,
-                        output_data=output_data,
-                        data_filters=data_filters,
-                        batch_indxs=data_indxs)
-                elif self.data_pipe_type == 'iterator':
-                    feed_dict = {self.iterator_handle: data_indxs}
-
-                ll_neuron = sess.run(self.unit_cost, feed_dict=feed_dict)
+            # else:  # no batch-size given
+            #    if self.data_pipe_type == 'data_as_var':
+            #        feed_dict = {self.indices: data_indxs}
+            #    elif self.data_pipe_type == 'feed_dict':
+            #        feed_dict = self._get_feed_dict(
+            #            input_data=input_data,
+            #            output_data=output_data,
+            #            data_filters=data_filters,
+            #            batch_indxs=data_indxs)
+            #    elif self.data_pipe_type == 'iterator':
+            #        feed_dict = {self.iterator_handle: data_indxs}
+            #
+            #   ll_neuron = sess.run(self.unit_cost, feed_dict=feed_dict)
 
             if nulladjusted:
                 # note that ll_neuron is negative of the true log-likelihood,
@@ -1272,6 +1274,11 @@ class NDN(object):
             if opt_params['early_stop'] > 0 and test_indxs is None:
                 raise ValueError('test_indxs must be specified for early stopping')
 
+        # Handle blocks, if necessary
+        if blocks is not None:
+            block_lists, data_filters, batch_comb = process_blocks(
+                blocks, data_filters, opt_params['batch_size'], self.time_spread)
+
         # build datasets if using 'iterator' pipeline
         if self.data_pipe_type is 'iterator':
             dataset_tr = self._build_dataset(
@@ -1364,7 +1371,8 @@ class NDN(object):
                             sess=sess,
                             train_writer=train_writer,
                             test_writer=test_writer,
-                            block_inds=blocks,
+                            block_lists=block_lists,
+                            batch_comb=batch_comb,
                             train_blocks=train_indxs,
                             test_blocks=test_indxs,
                             data_filters=data_filters,
@@ -1400,7 +1408,8 @@ class NDN(object):
                             sess=sess,
                             train_writer=train_writer,
                             test_writer=test_writer,
-                            block_inds=blocks,
+                            block_lists=block_lists,
+                            batch_comb=batch_comb,
                             train_blocks=train_indxs,
                             test_blocks=test_indxs,
                             data_filters=data_filters,
@@ -1791,12 +1800,10 @@ class NDN(object):
                     temp_data[batch_indxs, :]
         if output_data is not None:
             for i, temp_data in enumerate(output_data):
-                feed_dict[self.data_out_batch[i]] = \
-                    temp_data[batch_indxs, :]
+                feed_dict[self.data_out_batch[i]] = temp_data[batch_indxs, :]
         if data_filters is not None:
-            for i, temp_data in enumerate(output_data):
-                feed_dict[self.data_filter_batch[i]] = \
-                    data_filters[i][batch_indxs, :]
+            for i, temp_data in enumerate(data_filters):
+                feed_dict[self.data_filter_batch[i]] = temp_data[batch_indxs, :]
         return feed_dict
     # END _get_feed_dict
 
@@ -1808,7 +1815,8 @@ class NDN(object):
             test_writer=None,
             train_blocks=None,  # here
             test_blocks=None,  # here
-            block_inds=None,  # here
+            block_lists=None,  # here
+            batch_comb=1,  # here
             input_data=None,
             output_data=None,
             data_filters=None,
@@ -1843,13 +1851,11 @@ class NDN(object):
         else:
             df = deepcopy(data_filters)
 
-        block_lists, mod_df, comb_number = process_blocks( block_inds, df, self.batch_size, self.time_spread)
-
         num_batches_tr = len(train_blocks)
         num_batches_te = len(test_blocks)
-        num_comb_batch_train_step = np.floor(num_batches_tr / comb_number).astype(int)
+        num_comb_batch_train_step = np.floor(num_batches_tr / batch_comb).astype(int)
 
-        assert num_batches_tr+num_batches_te == len(block_inds), 'Incorrect number of train/test blocks.'
+        assert num_batches_tr+num_batches_te == len(block_lists), 'Incorrect number of train/test blocks.'
 
         if opt_params['run_diagnostics']:
             run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
@@ -1901,10 +1907,14 @@ class NDN(object):
                     #else:
                     #    batch_indxs = train_indxs[batch_order_perm[batch] * self.batch_size:
                     #                              (batch_order_perm[batch]+1) * self.batch_size]
-                batch_indxs = []
-                for nn in range(comb_number):
-                    block_num = train_blocks[batch_order_perm[batch*comb_number+nn]]
-                    batch_indxs = np.concatenate((batch_indxs, block_lists[block_num]))
+
+                for nn in range(batch_comb):
+                    block_num = train_blocks[batch_order_perm[batch*batch_comb+nn]]
+                    if nn == 0:
+                        batch_indxs = block_lists[block_num]
+                    else:
+                        batch_indxs = np.concatenate((batch_indxs, block_lists[block_num]))
+
                 # one step of optimization routine
                 if self.data_pipe_type == 'data_as_var':
                     # get the feed_dict for batch_indxs
@@ -1912,10 +1922,11 @@ class NDN(object):
                     #feed_dict = {self.indices: block_inds[batch_order_perm[batch]]}
                     feed_dict = {self.indices: batch_indxs}
                 elif self.data_pipe_type == 'feed_dict':
+                    print('*** likely problem with variable batch sizes for feed_dict mode')
                     feed_dict = self._get_feed_dict(
                         input_data=input_data,
                         output_data=output_data,
-                        data_filters=mod_df,
+                        data_filters=data_filters,
                         batch_indxs=batch_indxs)
                         #batch_indxs=block_inds[batch_order_perm[batch]])
                         #batch_indxs=batch_indxs)
@@ -1928,27 +1939,43 @@ class NDN(object):
             if opt_params['display'] is not None and not silent and \
                     ((epoch % opt_params['display'] == opt_params['display']-1) or (epoch == 0)):
 
-                cost_tr, cost_test = 0, 0
-                for batch_tr in range(num_batches_tr):
+                #cost_tr, cost_test = 0, 0
+                #for batch_tr in range(num_batches_tr):
                     # Will be contiguous data: no need to change time-spread
                     #batch_indxs_tr = train_indxs[batch_tr * opt_params['batch_size']:
                     #                             (batch_tr+1) * opt_params['batch_size']]
-                    if self.data_pipe_type == 'data_as_var':
+                #    if self.data_pipe_type == 'data_as_var':
                         #feed_dict = {self.indices: batch_indxs_tr}
-                        feed_dict = {self.indices: block_lists[batch_tr]}
-                    elif self.data_pipe_type == 'feed_dict':
-                        feed_dict = self._get_feed_dict(
-                            input_data=input_data,
-                            output_data=output_data,
-                            data_filters=mod_df,
-                            batch_indxs=block_lists[train_blocks[batch_tr]])
-                            #batch_indxs=batch_indxs_tr)
-                    elif self.data_pipe_type == 'iterator':
-                        feed_dict = {self.iterator_handle: iter_handle_tr}
+                #        feed_dict = {self.indices: block_lists[train_blocks[batch_tr]]}
+                #    elif self.data_pipe_type == 'feed_dict':
+                #        feed_dict = self._get_feed_dict(
+                #            input_data=input_data,
+                #            output_data=output_data,
+                #            data_filters=mod_df,
+                #            batch_indxs=block_lists[train_blocks[batch_tr]])
+                #            #batch_indxs=batch_indxs_tr)
+                #    elif self.data_pipe_type == 'iterator':
+                #        feed_dict = {self.iterator_handle: iter_handle_tr}
 
-                    cost_tr += sess.run(self.cost, feed_dict=feed_dict)
+                #    cost_tr += sess.run(self.cost, feed_dict=feed_dict)
 
-                cost_tr /= num_batches_tr
+                #cost_tr /= num_batches_tr
+                if self.data_pipe_type == 'data_as_var' or self.data_pipe_type == 'feed_dict':
+                    cost_tr = self._get_test_cost_block(
+                        sess=sess,
+                        input_data=input_data,
+                        output_data=output_data,
+                        data_filters=data_filters,
+                        test_blocks=train_blocks,
+                        block_inds=block_lists)
+                elif self.data_pipe_type == 'iterator':
+                    cost_tr = self._get_test_cost(
+                        sess=sess,
+                        input_data=input_data,
+                        output_data=output_data,
+                        data_filters=data_filters,
+                        test_indxs=iter_handle_train,
+                        test_batch_size=opt_params['batch_size'])
                 reg_pen = sess.run(self.cost_reg)
 
                 if test_blocks is not None:
@@ -1957,7 +1984,7 @@ class NDN(object):
                             sess=sess,
                             input_data=input_data,
                             output_data=output_data,
-                            data_filters=mod_df,
+                            data_filters=data_filters,
                             test_blocks=test_blocks,
                             block_inds=block_lists)
                             #test_indxs=test_indxs,
@@ -2030,7 +2057,7 @@ class NDN(object):
                         sess=sess,
                         input_data=input_data,
                         output_data=output_data,
-                        data_filters=mod_df,
+                        data_filters=data_filters,
                         test_blocks=data_blocks,
                         block_inds=block_lists)
                 elif self.data_pipe_type == 'iterator':
@@ -2040,7 +2067,7 @@ class NDN(object):
                         sess=sess,
                         input_data=input_data,
                         output_data=output_data,
-                        data_filters=mod_df,
+                        data_filters=data_filters,
                         test_indxs=iter_handle_test,
                         test_batch_size=opt_params['batch_size'])
 
@@ -2322,6 +2349,11 @@ class NDN(object):
             if type(data_filters) is not list:
                 data_filters = [data_filters]
             assert len(data_filters) == len(output_data), 'Number of data filters must match output data.'
+        else:
+            if self.filter_data:
+                self.filter_data = False
+                print('WARNING: not using data-filter despite previously using.')
+
         self.num_examples = input_data[0].shape[0]
         for temp_data in input_data:
             if temp_data.shape[0] != self.num_examples:

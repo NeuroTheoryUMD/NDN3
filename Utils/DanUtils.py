@@ -205,7 +205,7 @@ def tbasis_recover_filters(ndn_mod):
 
     tkerns = ndn_mod.networks[0].layers[0].weights
     num_lags, num_tkerns = tkerns.shape
-    non_lag_dims = np.prod(ndn_mod.networks[0].layers[1].input_dims) // num_tkerns
+    non_lag_dims = np.prod(ndn_mod.networks[0].layers[1].filter_dims) // num_tkerns
     num_filts = ndn_mod.networks[0].layers[1].weights.shape[1]
     ws = np.reshape(ndn_mod.networks[0].layers[1].weights, [non_lag_dims, num_tkerns, num_filts])
     # num_lags = ndn_mod.networks[0].layers[0].num_lags
