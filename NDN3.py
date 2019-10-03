@@ -755,20 +755,6 @@ class NDN(object):
 
                 ll_neuron = np.divide(unit_cost, num_batches_test)
 
-            # else:  # no batch-size given
-            #    if self.data_pipe_type == 'data_as_var':
-            #        feed_dict = {self.indices: data_indxs}
-            #    elif self.data_pipe_type == 'feed_dict':
-            #        feed_dict = self._get_feed_dict(
-            #            input_data=input_data,
-            #            output_data=output_data,
-            #            data_filters=data_filters,
-            #            batch_indxs=data_indxs)
-            #    elif self.data_pipe_type == 'iterator':
-            #        feed_dict = {self.iterator_handle: data_indxs}
-            #
-            #   ll_neuron = sess.run(self.unit_cost, feed_dict=feed_dict)
-
             if nulladjusted:
                 # note that ll_neuron is negative of the true log-likelihood,
                 # but get_null_ll is not (so + is actually subtraction)
@@ -806,15 +792,11 @@ class NDN(object):
 
         """
 
-        # Make fake output_data for passing into model
-        num_outputs = len(self.ffnet_out)
-        output_data = [None] * num_outputs
+        # Set up model to handle prediction
+        self.filter_data = False
 
-        # check input
-        if type(input_data) is not list:
-            input_data = [input_data]
-        self.num_examples = input_data[0].shape[0]
-        input_data, output_data, data_filters = self._data_format(input_data, output_data, None)
+        # validate function inputs (includes generating dummy output_data)
+        input_data, output_data, data_filters = self._data_format(input_data, None, None)
 
         if data_indxs is None:
             data_indxs = np.arange(self.num_examples)
@@ -826,13 +808,6 @@ class NDN(object):
         # change data_pipe_type to feed_dict
         # original_pipe_type = deepcopy(self.data_pipe_type)
         # self.data_pipe_type = 'data_as_var'
-
-        # Generate fake_output data and take care of data-filtering, in case necessary
-        self.filter_data = False
-        for nn in range(num_outputs):
-            output_data[nn] = np.zeros(
-                [self.num_examples, self.networks[self.ffnet_out[nn]].layers[-1].weights.shape[1]],
-                dtype='float32')
 
         if (self.batch_size is None) or (self.batch_size > data_indxs.shape[0]):
             batch_size_save = self.batch_size
@@ -2323,11 +2298,6 @@ class NDN(object):
         import dill
 
         tmp_ndn = self.copy_model()
-
-        #for ii in range(len(tmp_ndn.network_list)):
-        #    for jj in range(len(tmp_ndn.network_list[ii]['layer_sizes'])):
-        #        tmp_ndn.networks[ii].layers[jj].reg.mats = {}
-
         sys.setrecursionlimit(10000)  # for dill calls to pickle
 
         if not os.path.isdir(os.path.dirname(save_file)):
@@ -2342,8 +2312,19 @@ class NDN(object):
 
         if type(input_data) is not list:
             input_data = [input_data]
-        if type(output_data) is not list:
-            output_data = [output_data]
+        self.num_examples = input_data[0].shape[0]
+
+        if output_data is not None:
+            if type(output_data) is not list:
+                output_data = [output_data]
+        else:  # generate dummy data
+            num_outputs = len(self.ffnet_out)
+            output_data = [None] * num_outputs
+            for nn in range(num_outputs):
+                output_data[nn] = np.zeros(
+                    [self.num_examples, self.networks[self.ffnet_out[nn]].layers[-1].weights.shape[1]],
+                    dtype='float32')
+
         if data_filters is not None:
             self.filter_data = True
             if type(data_filters) is not list:
@@ -2354,12 +2335,12 @@ class NDN(object):
                 self.filter_data = False
                 print('WARNING: not using data-filter despite previously using.')
 
-        self.num_examples = input_data[0].shape[0]
         for temp_data in input_data:
             if temp_data.shape[0] != self.num_examples:
                 raise ValueError('Input data dims must match across input_data.')
         for nn, temp_data in enumerate(output_data):
             if temp_data.shape[0] != self.num_examples:
+                print('in', nn, temp_data.shape, self.num_examples)
                 raise ValueError('Output dim0 must match model values')
             if len(temp_data.shape) < 2:
                 output_data[nn] = np.expand_dims(temp_data, axis=1)
