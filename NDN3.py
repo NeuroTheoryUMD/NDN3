@@ -929,6 +929,7 @@ class NDN(object):
         target.poisson_unit_norm = self.poisson_unit_norm
         target.data_pipe_type = self.data_pipe_type
         target.batch_size = self.batch_size
+        target.time_spread = self.time_spread
 
         # Copy all the parameters
         for nn in range(self.num_networks):

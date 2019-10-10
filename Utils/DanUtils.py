@@ -16,6 +16,7 @@ def reg_path(
         output_data=None,
         train_indxs=None,
         test_indxs=None,
+        blocks=None,
         reg_type='l1',
         reg_vals=[1e-6, 1e-4, 1e-3, 1e-2, 0.1, 1],
         ffnet_target=0,
@@ -59,11 +60,11 @@ def reg_path(
         test_mod = ndn_mod.copy_model()
         test_mod.set_regularization(reg_type, reg_vals[nn], ffnet_target, layer_target)
         test_mod.train(input_data=input_data, output_data=output_data, silent=silent,
-                       train_indxs=train_indxs, test_indxs=test_indxs,
+                       train_indxs=train_indxs, test_indxs=test_indxs, blocks=blocks,
                        data_filters=data_filters, fit_variables=fit_variables,
                        learning_alg='adam', opt_params=opt_params, output_dir=output_dir)
         LLxs[nn] = np.mean(
-            test_mod.eval_models(input_data=input_data, output_data=output_data,
+            test_mod.eval_models(input_data=input_data, output_data=output_data, blocks=blocks,
                                  data_indxs=test_indxs, data_filters=data_filters))
         test_mods.append(test_mod.copy_model())
         print('%s (%s = %s): %s' % (nn, reg_type, reg_vals[nn], LLxs[nn]))
