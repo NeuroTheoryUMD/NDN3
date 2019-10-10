@@ -184,6 +184,7 @@ def spatial_profile_info(xprofile):
 
 def spatial_spread(filters, axis=0):
     """Calculate the spatial spread of a list of filters along one dimension"""
+
     # Calculate mean of filter
     k = np.square(filters.copy())
     if axis > 0:

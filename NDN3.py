@@ -689,7 +689,12 @@ class NDN(object):
         if blocks is not None:
             self.filter_data = True
             if data_filters is None:
-                data_filters = np.ones(output_data[0].shape, dtype='float32')
+                if isinstance(output_data, list):
+                    data_filters = []
+                    for nn in range(len(output_data)):
+                        data_filters.append(np.ones(output_data[nn].shape, dtype='float32'))
+                else:
+                    data_filters = np.ones(output_data.shape, dtype='float32')
 
         # check input
         input_data, output_data, data_filters = self._data_format(input_data, output_data, data_filters)
@@ -701,7 +706,7 @@ class NDN(object):
             self.batch_size = data_indxs.shape[0]
             # note this could crash if batch_size too large. but crash cause should be clear...
 
-        # build datasets if using 'iterator' pipeline
+        # build datasets if using 'iterator' pipeline -- curently not operating...
         #if self.data_pipe_type == 'iterator':
         #    dataset = self._build_dataset(
         #        input_data=input_data,
