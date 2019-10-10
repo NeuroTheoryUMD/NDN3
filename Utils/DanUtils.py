@@ -838,6 +838,60 @@ def matlab_export(filename, variable_list):
     sio.savemat(filename, matdata)
 
 
+def binocular_matlab_export(binoc_mod, filename):
+    """Export binocular model (including filter calc) to .mat file"""
+
+    import scipy.io as sio
+    matdata = {}
+    for nn in range(binoc_mod.num_networks):
+        for ll in range(len(binoc_mod.networks[nn].layers)):
+            wstring = 'ws' + str(nn) + str(ll)
+            matdata[wstring] = binoc_mod.networks[nn].layers[ll].weights
+            bstring = 'bs' + str(nn) + str(ll)
+            matdata[bstring] = binoc_mod.networks[nn].layers[ll].biases
+
+    bfilts = binocular_compute_filters(binoc_mod=binoc_mod, to_plot=False)
+    matdata['bfilts'] = bfilts
+    sio.savemat(filename, matdata)
+
+
+def binocular_compute_filters(binoc_mod, to_plot=True):
+
+    # Find binocular layer
+    blayer, bnet = None, None
+    for mm in range(len(binoc_mod.networks)):
+        for nn in range(len(binoc_mod.networks[mm].layers)):
+            if binoc_mod.network_list[mm]['layer_types'][nn] == 'biconv':
+                if nn < len(binoc_mod.networks[mm].layers) - 1:
+                    bnet, blayer = mm, nn + 1
+                elif mm < len(binoc_mod.networks) - 1:
+                    bnet, blayer = mm + 1, 0  # split in hierarchical network
+    assert blayer is not None, 'biconv layer not found'
+
+    NF = binoc_mod.networks[0].layers[blayer].output_dims[0]
+    Nin = binoc_mod.networks[0].layers[blayer].input_dims[0]
+    NX = binoc_mod.networks[0].layers[blayer].filter_dims[1]
+    ks1 = compute_spatiotemporal_filters(binoc_mod)
+    ws = np.reshape(binoc_mod.networks[0].layers[blayer].weights, [NX, Nin, NF])
+    num_lags = binoc_mod.networks[0].layers[0].input_dims[0]
+    if binoc_mod.networks[0].layers[0].filter_dims[1] > 1:  # then not temporal layer
+        filter_dims = [num_lags, binoc_mod.networks[0].layers[0].filter_dims[1]]
+    else:
+        filter_dims = [num_lags, binoc_mod.networks[0].layers[1].filter_dims[1]]
+    nfd = [filter_dims[0], filter_dims[1] + NX]
+    # print(filter_dims, nfd)
+    Bfilts = np.zeros(nfd + [NF, 2])
+    for nn in range(NX):
+        Bfilts[:, np.add(range(filter_dims[1]), nn), :, 0] += np.reshape(
+            np.matmul(ks1, ws[nn, range(Nin // 2), :]), [filter_dims[1], filter_dims[0], NF])
+        Bfilts[:, np.add(range(filter_dims[1]), nn), :, 1] += np.reshape(
+            np.matmul(ks1, ws[nn, range(Nin // 2, Nin), :]), [filter_dims[1], filter_dims[0], NF])
+    bifilts = np.concatenate((Bfilts[:, :, :, 0], Bfilts[:, :, :, 1]), axis=1)
+    if to_plot:
+        plot_filters(filters=bifilts, flipxy=True)
+    return bifilts
+
+
 def side_ei_analyze(side_ndn):
 
     num_space = int(side_ndn.networks[0].input_dims[1])

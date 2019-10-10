@@ -349,20 +349,23 @@ class NDN(object):
 
             if self.filter_data:
                 # this will zero out predictions where there is no data, matching Robs here
-                pred = tf.multiply(
+                pred_tmp = tf.multiply(
                     self.networks[self.ffnet_out[nn]].layers[-1].outputs,
                     self.data_filter_batch[nn])
+                #nt = tf.maximum(tf.reduce_sum(self.data_filter_batch[nn], axis=0), 1)
             else:
-                pred = self.networks[self.ffnet_out[nn]].layers[-1].outputs
+                pred_tmp = self.networks[self.ffnet_out[nn]].layers[-1].outputs
+                #nt = tf.cast(tf.shape(pred)[0], tf.float32)
 
             if self.time_spread is None:
-                #nt = tf.cast(tf.shape(pred)[0], tf.float32)
-                nt = tf.constant(self.batch_size, dtype=tf.float32)
+                #nt = tf.constant(self.batch_size, dtype=tf.float32)
+                pred = pred_tmp
             else:
-                pred = tf.slice(pred, [self.time_spread, 0], [-1, -1])  # [self.batch_size-self.time_spread, -1])
+                pred = tf.slice(pred_tmp, [self.time_spread, 0], [-1, -1])  # [self.batch_size-self.time_spread, -1])
                 # effective_batch_size is self.batch_size - self.time_spread
                 #nt = tf.constant(self.batch_size - self.time_spread, dtype=tf.float32)
-                nt = tf.cast(tf.shape(pred)[0]-self.time_spread, tf.float32)
+                #nt += -self.time_spread
+            nt = tf.cast(tf.shape(pred)[0], tf.float32)
 
             # define cost function
             if self.noise_dist == 'gaussian':
@@ -385,8 +388,8 @@ class NDN(object):
 
                     unit_cost.append(-tf.divide(
                         tf.reduce_sum(
-                            tf.multiply(
-                                data_out, tf.log(self._log_min + pred)) - pred, axis=0),
+                            tf.multiply(data_out, tf.log(self._log_min + pred)) - pred,
+                            axis=0),
                         cost_norm))
 
             elif self.noise_dist == 'bernoulli':
@@ -683,6 +686,11 @@ class NDN(object):
                 positive if better than the null-model.
         """
 
+        if blocks is not None:
+            self.filter_data = True
+            if data_filters is None:
+                data_filters = np.ones(output_data[0].shape, dtype='float32')
+
         # check input
         input_data, output_data, data_filters = self._data_format(input_data, output_data, data_filters)
 
@@ -726,7 +734,13 @@ class NDN(object):
                     batch_size = data_indxs.shape[0]
                 mod_df = data_filters
             else:
-                block_lists, mod_df, _ = process_blocks(block_inds, df, skip=self.time_spread)
+                if self.time_spread > 0:
+                    block_lists, mod_df, _ = process_blocks(blocks, data_filters, skip=self.time_spread)
+                else:  # enter default time spread in between blocks
+                    print("WARNING: no time-spread entered for using blocks. Setting to 20.")
+                    self.time_spread = 20
+
+                self.filter_data = True
                 num_batches_test = len(data_indxs)
 
             self._restore_params(sess, input_data, output_data, data_filters=mod_df)
@@ -753,7 +767,7 @@ class NDN(object):
                 else:
                     unit_cost = np.add(unit_cost, sess.run(self.unit_cost, feed_dict=feed_dict))
 
-                ll_neuron = np.divide(unit_cost, num_batches_test)
+            ll_neuron = np.divide(unit_cost, num_batches_test)
 
             if nulladjusted:
                 # note that ll_neuron is negative of the true log-likelihood,
@@ -761,12 +775,11 @@ class NDN(object):
                 for i, temp_data in enumerate(output_data):
                     ll_neuron[i] = -ll_neuron[i] - self.get_null_ll(temp_data[data_indxs, :])
             # note that this will only be correct for single output indices
-
-        if len(ll_neuron) == 1:
-            return ll_neuron[0]
+        if len(output_data) == 1:
+            return ll_neuron[:, 0]
         else:
             return ll_neuron
-    # END get_LL_neuron
+    # END NDN3.eval_models
 
     def generate_prediction(self, input_data, data_indxs=None, use_gpu=False,
                             ffnet_target=-1, layer_target=-1, use_dropout=False):
@@ -1251,6 +1264,9 @@ class NDN(object):
 
         # Handle blocks, if necessary
         if blocks is not None:
+            if data_filters is None:  # produce data-filters for incorporating gaps
+                data_filters = [np.ones(output_data[0].shape, dtype='float32')]
+            self.filter_data = True
             block_lists, data_filters, batch_comb = process_blocks(
                 blocks, data_filters, opt_params['batch_size'], self.time_spread)
 
@@ -1624,7 +1640,7 @@ class NDN(object):
                     test_writer.add_summary(summary, epoch)
                     test_writer.flush()
 
-            if opt_params['early_stop'] > 0:
+            if opt_params['early_stop_mode'] > 0:
 
                 # if you want to suppress that useless warning
                 with warnings.catch_warnings():
