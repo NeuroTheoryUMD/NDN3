@@ -221,6 +221,8 @@ def compute_spatiotemporal_filters(ndn_mod):
 
     # Check to see if there is a temporal layer first
     num_lags = ndn_mod.networks[0].layers[0].num_lags
+    if num_lags == 1 and ndn_mod.networks[0].layers[0].filter_dims[0] > 1:
+        num_lags = ndn_mod.networks[0].layers[0].filter_dims[0]
     if np.prod(ndn_mod.networks[0].layers[0].filter_dims[1:]) == 1:  # then likely temporal basis
         ks_flat = tbasis_recover_filters(ndn_mod)
         sp_dims = ndn_mod.networks[0].layers[1].filter_dims[1:]
