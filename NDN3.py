@@ -772,16 +772,18 @@ class NDN(object):
                 else:
                     unit_cost = np.add(unit_cost, sess.run(self.unit_cost, feed_dict=feed_dict))
 
-            ll_neuron = np.divide(unit_cost[0, :], num_batches_test)
+            ll_neuron = np.divide(unit_cost, num_batches_test)
 
             if nulladjusted:
                 # note that ll_neuron is negative of the true log-likelihood,
                 # but get_null_ll is not (so + is actually subtraction)
-                for i, temp_data in enumerate(output_data):
-                    ll_neuron[i] = -ll_neuron[i] - self.get_null_ll(temp_data[data_indxs, :])
-            # note that this will only be correct for single output indices
+                for ii, temp_data in enumerate(output_data):
+                    ll_neuron[ii] = -ll_neuron[ii] - self.get_null_ll(temp_data[data_indxs, :])
 
-        return ll_neuron
+            if len(output_data) == 1:
+                return ll_neuron[0]
+            else:
+                return ll_neuron
     # END NDN3.eval_models
 
     def generate_prediction(self, input_data, data_indxs=None, use_gpu=False,

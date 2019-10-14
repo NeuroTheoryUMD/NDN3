@@ -476,7 +476,7 @@ class ConvLayer(Layer):
             else:
                 filter_dims = [filter_dims, 1, 1]
 
-        #if nlags is not None:
+        # if nlags is not None:
         #    filter_dims[0] *= nlags
 
         # If output dimensions already established, just strip out num_filters
