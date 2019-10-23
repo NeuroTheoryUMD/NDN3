@@ -127,7 +127,9 @@ class Layer(object):
             while len(input_dims) < 3:
                 input_dims.append(1)
         else:
-            input_dims = [1, input_dims, 1]
+            # input_dims = [1, input_dims, 1]
+            input_dims = [input_dims, 1, 1]
+
         # Internal representation will be 3-dimensional, combining num_lags with input_dims[0]
         if len(input_dims) > 3:
             self.num_lags = input_dims[3]
@@ -569,6 +571,51 @@ class ConvLayer(Layer):
             tf.summary.histogram('act_pre', pre)
             tf.summary.histogram('act_post', post)
     # END ConvLayer.build_graph
+
+
+# class ClusterLayer(Layer):
+#     """Implementation of 'Cluster' layer: combined multiple subunits into separate streams for fitting
+#     non-shared subunits. This is non-convolutional. For now, just uses layer constructor, treated as nornal,
+#     and have to set num subunits away from default (2) to ge
+#
+#     Attributes:
+#         num_subs: how many subunits to associate with each output unit
+#     """
+#
+#     def __init__(
+#             self,
+#             scope=None,
+#             input_dims=None,  # this can be a list up to 3-dimensions
+#             output_dims=None,
+#             activation_func='relu',
+#             normalize_weights=0,
+#             weights_initializer='normal',
+#             biases_initializer='zeros',
+#             reg_initializer=None,
+#             num_inh=0,
+#             pos_constraint=None,
+#             log_activations=False):
+#
+#         assert num_subs is not None, 'Must give number of subs associated with each output unit'
+#
+#         super(ClusterLayer, self).__init__(
+#             scope=scope,
+#             input_dims=input_dims,
+#             output_dims=output_dims,  # Note difference from layer
+#             activation_func=activation_func,
+#             normalize_weights=normalize_weights,
+#             weights_initializer=weights_initializer,
+#             biases_initializer=biases_initializer,
+#             reg_initializer=reg_initializer,
+#             num_inh=num_inh,
+#             pos_constraint=pos_constraint,  # note difference from layer (not anymore)
+#             log_activations=log_activations)
+#
+#         # ConvLayer-specific properties
+#         self.num_subs = num_subs
+#     # END ClusterLayer.__init__
+#
+#     def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
 
 
 class ConvXYLayer(Layer):
