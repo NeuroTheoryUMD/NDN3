@@ -5,7 +5,7 @@ from __future__ import division
 
 import tensorflow as tf
 from layer import *
-from tlayer import *
+#from tlayer import *
 
 
 class FFNetwork(object):
