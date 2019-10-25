@@ -980,14 +980,14 @@ def scaffold_nonconv_plot( side_ndn, with_inh=True, nolabels=True, skip_first_le
     plt.show()
 
 
-def scaffold_plot_cell( side_ndn, cell_n, with_inh=True, nolabels=True, skip_first_level=False, linewidth=1):
+def scaffold_plot_cell(side_ndn, cell_n, with_inh=True, nolabels=True, skip_first_level=False, linewidth=1):
     """Plots the scaffold weight vector for a convolutional network for the chosen neuron"""
 
     # either way assume scaffold is last later, and see where it maps from
     sc_tar = side_ndn.network_list[-1]['ffnet_n'][0]
     assert sc_tar is not None, 'Unable to read scaffold target.'
-    if len(side_ndn.network_list) != 2:
-        print('Non-typical scaffold network: scaffold = network %d, target = %d' %(len(side_ndn.network_list)-1, sc_tar) )
+    #if len(side_ndn.network_list) != 2:
+    #    print('Non-typical scaffold network: scaffold = network %d, target = %d' %(len(side_ndn.network_list)-1, sc_tar) )
 
     num_cells = side_ndn.network_list[-1]['layer_sizes'][-1]
     num_units = side_ndn.networks[-1].num_units[:]
