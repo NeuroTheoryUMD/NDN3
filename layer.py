@@ -1830,7 +1830,7 @@ class SpkNL_Layer(Layer):
 
         _MAX_Y_3PAR = 5
         if self.three_param_fit:
-            self.weights[0, :] = np.minimum(self.weights[:, 0], MAX_Y_3PAR-0.2)
+            self.weights[0, :] = np.minimum(self.weights[:, 0], _MAX_Y_3PAR-0.2)
 
         with tf.name_scope(self.scope):
             self._define_layer_variables()
@@ -1847,7 +1847,7 @@ class SpkNL_Layer(Layer):
             self.outputs = post
 
         if self.log:
-            tf.summary.histogram('act_pre', pre)
+            tf.summary.histogram('act_pre', _pre)
             tf.summary.histogram('act_post', post)
     # END SpkNL._build_graph
 
