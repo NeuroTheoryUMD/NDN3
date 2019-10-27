@@ -155,7 +155,8 @@ class Layer(object):
             if self.num_lags == 1:
                 filter_dims = self.input_dims
             else:
-                filter_dims = self.input_dims + [self.num_lags]
+                #filter_dims = self.input_dims + [self.num_lags]
+                filter_dims = self.input_dims
 
         self.filter_dims = filter_dims[:]
         num_inputs = np.prod(self.filter_dims)
