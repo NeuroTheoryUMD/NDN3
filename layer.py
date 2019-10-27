@@ -5,9 +5,9 @@ from __future__ import division
 
 import numpy as np
 import tensorflow as tf
-from regularization import Regularization
-from regularization import SepRegularization
-from regularization import UnitRegularization
+from .regularization import Regularization
+from .regularization import SepRegularization
+from .regularization import UnitRegularization
 
 from copy import deepcopy
 from sklearn.preprocessing import normalize as sk_normalize

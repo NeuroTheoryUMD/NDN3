@@ -11,10 +11,10 @@ import shutil
 import numpy as np
 import tensorflow as tf
 
-from ffnetwork import FFNetwork
-from ffnetwork import SideNetwork
-from NDNutils import concatenate_input_dims
-from NDNutils import process_blocks
+from .ffnetwork import FFNetwork
+from .ffnetwork import SideNetwork
+from .NDNutils import concatenate_input_dims
+from .NDNutils import process_blocks
 
 class NDN(object):
     """Tensorflow (tf) implementation of Neural Deep Network class

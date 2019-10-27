@@ -4,7 +4,7 @@ from __future__ import print_function
 from __future__ import division
 
 import tensorflow as tf
-from layer import *
+from .layer import *
 #from tlayer import *
 
 
