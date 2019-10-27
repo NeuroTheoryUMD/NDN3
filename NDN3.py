@@ -2529,8 +2529,8 @@ class NDN(object):
             # Convert display variable to boolean
             if opt_params['display'] is None:
                 opt_params['display'] = False
-            else:
-                opt_params['display'] = True
+            if 'batch_size' not in opt_params:
+                opt_params['batch_size'] = None
 
         return opt_params
     # END network.optimizer_defaults
