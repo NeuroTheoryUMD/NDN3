@@ -979,8 +979,13 @@ class NDN(object):
             null_lls = np.var(robs, axis=0)
 
         elif self.noise_dist == 'poisson':
+            # while the 'correct' null_ll would be `np.multiply(np.log(rbars) - 1.0, rbars)` the ll
+            # ..for poisson is normalized (f:_define_loss:cost_norm) with `self.poisson_unit_norm` 
+            # that defaults (f:set_poisson_norm) to mean of the output data. Ergo null_ll needs to 
+            # be normalized as well -> `rbars*(np.log(rbars) - 1)/rbars` -> `np.log(rbars) - 1`
+            # See: #7
             rbars = np.mean(robs, axis=0)
-            null_lls = np.multiply(np.log(rbars) - 1.0, rbars)
+            null_lls = np.log(rbars) - 1.0
         # elif self.noise_dist == 'bernoulli':
         else:
             null_lls = [0] * robs.shape[1]
