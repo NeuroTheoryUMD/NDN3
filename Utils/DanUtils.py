@@ -2,7 +2,7 @@
 
 from __future__ import division
 import numpy as np
-import NDN3.NDN3 as NDN
+import NDN3 as NDN
 import NDNutils as NDNutils
 import matplotlib.pyplot as plt
 
