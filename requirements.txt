@@ -1,0 +1,2 @@
+-r requirements-core.txt
+tensorflow>=1.12.0
