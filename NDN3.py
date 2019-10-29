@@ -980,7 +980,7 @@ class NDN(object):
 
         elif self.noise_dist == 'poisson':
             rbars = np.mean(robs, axis=0)
-            null_lls = np.log(rbars) - 1.0
+            null_lls = np.multiply(np.log(rbars) - 1.0, rbars)
         # elif self.noise_dist == 'bernoulli':
         else:
             null_lls = [0] * robs.shape[1]
