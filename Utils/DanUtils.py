@@ -207,9 +207,14 @@ def tbasis_recover_filters(ndn_mod):
 
     tkerns = ndn_mod.networks[0].layers[0].weights
     num_lags, num_tkerns = tkerns.shape
-    non_lag_dims = np.prod(ndn_mod.networks[0].layers[1].filter_dims) // num_tkerns
-    num_filts = ndn_mod.networks[0].layers[1].weights.shape[1]
-    ws = np.reshape(ndn_mod.networks[0].layers[1].weights, [non_lag_dims, num_tkerns, num_filts])
+    if len(ndn_mod.networks[0].layers) == 1:
+        non_lag_dims = np.prod(ndn_mod.networks[1].layers[0].filter_dims) // num_tkerns
+        num_filts = ndn_mod.networks[1].layers[0].weights.shape[1]
+        ws = np.reshape(ndn_mod.networks[1].layers[0].weights, [non_lag_dims, num_tkerns, num_filts])
+    else:
+        non_lag_dims = np.prod(ndn_mod.networks[0].layers[1].filter_dims) // num_tkerns
+        num_filts = ndn_mod.networks[0].layers[1].weights.shape[1]
+        ws = np.reshape(ndn_mod.networks[0].layers[1].weights, [non_lag_dims, num_tkerns, num_filts])
     # num_lags = ndn_mod.networks[0].layers[0].num_lags
     ks = np.reshape(np.matmul( tkerns, ws), [non_lag_dims*num_lags, num_filts])
     # ks = np.zeros([non_lag_dims*num_lags, num_filts])
@@ -225,8 +230,12 @@ def compute_spatiotemporal_filters(ndn_mod):
         num_lags = ndn_mod.networks[0].layers[0].filter_dims[0]
     if np.prod(ndn_mod.networks[0].layers[0].filter_dims[1:]) == 1:  # then likely temporal basis
         ks_flat = tbasis_recover_filters(ndn_mod)
-        sp_dims = ndn_mod.networks[0].layers[1].filter_dims[1:]
-        other_dims = ndn_mod.networks[0].layers[1].filter_dims[0] // ndn_mod.networks[0].layers[0].num_filters
+        if len(ndn_mod.networks[0].layers) > 1:
+            sp_dims = ndn_mod.networks[0].layers[1].filter_dims[1:]
+            other_dims = ndn_mod.networks[0].layers[1].filter_dims[0] // ndn_mod.networks[0].layers[0].num_filters
+        else:
+            sp_dims = ndn_mod.networks[1].layers[0].filter_dims[1:]
+            other_dims = ndn_mod.networks[1].layers[0].filter_dims[0] // ndn_mod.networks[0].layers[0].num_filters
     else:
         ks_flat = ndn_mod.networks[0].layers[0].weights
         sp_dims = ndn_mod.networks[0].layers[0].filter_dims[1:3]
