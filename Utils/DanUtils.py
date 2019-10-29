@@ -230,8 +230,12 @@ def compute_spatiotemporal_filters(ndn_mod):
         num_lags = ndn_mod.networks[0].layers[0].filter_dims[0]
     if np.prod(ndn_mod.networks[0].layers[0].filter_dims[1:]) == 1:  # then likely temporal basis
         ks_flat = tbasis_recover_filters(ndn_mod)
-        sp_dims = ndn_mod.networks[0].layers[1].filter_dims[1:]
-        other_dims = ndn_mod.networks[0].layers[1].filter_dims[0] // ndn_mod.networks[0].layers[0].num_filters
+        if len(ndn_mod.networks[0].layers) > 1:
+            sp_dims = ndn_mod.networks[0].layers[1].filter_dims[1:]
+            other_dims = ndn_mod.networks[0].layers[1].filter_dims[0] // ndn_mod.networks[0].layers[0].num_filters
+        else:
+            sp_dims = ndn_mod.networks[1].layers[0].filter_dims[1:]
+            other_dims = ndn_mod.networks[1].layers[0].filter_dims[0] // ndn_mod.networks[0].layers[0].num_filters
     else:
         ks_flat = ndn_mod.networks[0].layers[0].weights
         sp_dims = ndn_mod.networks[0].layers[0].filter_dims[1:3]
