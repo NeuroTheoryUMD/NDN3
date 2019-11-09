@@ -5,10 +5,10 @@ from __future__ import division
 
 import numpy as np
 import tensorflow as tf
-from regularization import Regularization
-from regularization import SepRegularization
+from .regularization import Regularization
+from .regularization import SepRegularization
 
-from layer import Layer
+from .layer import Layer
 
 
 # TODO: fix input/output dims so that multiple consecutive TLayers are possible

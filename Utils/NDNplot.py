@@ -2,7 +2,7 @@ from __future__ import division
 from __future__ import print_function
 import numpy as np
 import matplotlib.pyplot as plt  # plotting
-import NDN3 as NDN
+import NDN3.NDN as NDN
 
 
 def display_filter3d(ks, filter_dims, options='best_lag'):

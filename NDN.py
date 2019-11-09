@@ -11,10 +11,10 @@ import shutil
 import numpy as np
 import tensorflow as tf
 
-from ffnetwork import FFNetwork
-from ffnetwork import SideNetwork
-from NDNutils import concatenate_input_dims
-from NDNutils import process_blocks
+from .ffnetwork import FFNetwork
+from .ffnetwork import SideNetwork
+from .NDNutils import concatenate_input_dims
+from .NDNutils import process_blocks
 
 class NDN(object):
     """Tensorflow (tf) implementation of Neural Deep Network class
@@ -2534,8 +2534,8 @@ class NDN(object):
             # Convert display variable to boolean
             if opt_params['display'] is None:
                 opt_params['display'] = False
-            else:
-                opt_params['display'] = True
+            if 'batch_size' not in opt_params:
+                opt_params['batch_size'] = None
 
         return opt_params
     # END network.optimizer_defaults
