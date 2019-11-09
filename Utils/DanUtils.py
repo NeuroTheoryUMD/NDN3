@@ -2,8 +2,8 @@
 
 from __future__ import division
 import numpy as np
-import NDN3 as NDN
-import NDNutils as NDNutils
+import NDN3.NDN as NDN
+import NDN3.NDNutils as NDNutils
 import matplotlib.pyplot as plt
 
 from copy import deepcopy

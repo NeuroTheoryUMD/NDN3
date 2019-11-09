@@ -5,8 +5,8 @@ from __future__ import division
 
 import numpy as np
 import tensorflow as tf
-import create_reg_matrices as get_rmats
 
+from . import create_reg_matrices as get_rmats
 
 class Regularization(object):
     """Class for handling layer-wise regularization
