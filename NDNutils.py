@@ -235,7 +235,7 @@ def expand_input_dims_to_3d(input_size):
     """Utility function to turn inputs into 3-d vectors"""
 
     if not isinstance(input_size, list):
-        input3d = [1, input_size, 1]
+        input3d = [input_size, 1, 1]
     else:
         input3d = input_size[:]
     while len(input3d) < 3:
