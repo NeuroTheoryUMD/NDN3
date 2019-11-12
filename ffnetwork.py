@@ -692,11 +692,12 @@ class SideNetwork(FFNetwork):
             for input_nn in range(num_layers):
 
                 if (self.num_space == 1) or \
-                        self.num_space == np.prod(input_network.layers[input_nn].output_dims[1:]):
+                        self.num_space == np.prod(input_network.layers[input_nn].output_dims[1:3]):
                     new_slice = tf.reshape(input_network.layers[input_nn].outputs,
                                            [-1, self.num_space, self.num_units[input_nn]])
+
                 else:  # spatial positions converted to different filters (binocular)
-                    native_space = np.prod(input_network.layers[input_nn].output_dims[1:])
+                    native_space = np.prod(input_network.layers[input_nn].output_dims[1:3])
                     native_filters = input_network.layers[input_nn].output_dims[0]
                     tmp = tf.reshape(input_network.layers[input_nn].outputs,
                                            [-1, 1, native_space, native_filters])
@@ -714,7 +715,7 @@ class SideNetwork(FFNetwork):
                     inputs_raw = tf.concat([inputs_raw, new_slice], 2)
 
             # Need to put layer dimension with the filters as bottom dimension instead of top
-            inputs = tf.reshape(inputs_raw, [-1, np.sum(self.num_units)*self.num_space] )
+            inputs = tf.reshape(inputs_raw, [-1, np.sum(self.num_units)*self.num_space])
             #inputs = tf.reshape(inputs_raw, [-1, num_layers*max_units*self.num_space])
 
             # Now standard graph-build (could just call the parent with inputs)
