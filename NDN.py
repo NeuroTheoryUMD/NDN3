@@ -171,7 +171,7 @@ class NDN(object):
                 ffnet_n = self.network_list[nn]['ffnet_n']
                 for mm in ffnet_n:
                     assert mm <= self.num_networks, 'Too many ffnetworks referenced.'
-                    #print('network %i:' % nn, mm, input_dims_measured, self.networks[mm].layers[-1].output_dims )
+                    # print('network %i:' % nn, mm, input_dims_measured, self.networks[mm].layers[-1].output_dims)
                     input_dims_measured = concatenate_input_dims(
                         input_dims_measured,
                         self.networks[mm].layers[-1].output_dims)
