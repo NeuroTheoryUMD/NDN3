@@ -1,2 +1,2 @@
 -r requirements-core.txt
-tensorflow>=1.12.0
+tensorflow>=1.12.0,<2.0
