@@ -1770,6 +1770,109 @@ class MultLayer(Layer):
     # END MultLayer.write_layer_params
 
 
+class FilterLayer(Layer):
+    """This layer has a weight vector to be applied to dim-0 (# filters) of input stimulus, with
+    a different filter for each of the other (spatial) dimensions. Thus, there needs to be a filter
+    for each spatial location
+    """
+
+    def __init__(
+            self,
+            scope=None,
+            input_dims=None,  # this can be a list up to 3-dimensions
+            activation_func='lin',
+            normalize_weights=1,
+            reg_initializer=None,
+            num_inh=0,
+            pos_constraint=None,
+            log_activations=False):
+        """Constructor for sepLayer class
+
+        Args:
+            scope (str): name scope for variables and operations in layer
+            input_dims (int): dimensions of input data
+            output_dims (int): dimensions of output data
+            activation_func (str, optional): pointwise function applied to
+                output of affine transformation
+                ['relu'] | 'sigmoid' | 'tanh' | 'identity' | 'softplus' |
+                'elu' | 'quad'
+            normalize_weights (int): type of normalization to apply to the
+                weights. Default [0] is to normalize across the first dimension
+                (time/filters), but '1' will normalize across spatial
+                dimensions instead, and '2' will normalize both
+            reg_initializer (dict, optional): see Regularizer docs for info
+            num_inh (int, optional): number of inhibitory units in layer
+            pos_constraint (None, valued, optional): True to constrain layer weights to
+                be positive
+            log_activations (bool, optional): True to use tf.summary on layer
+                activations
+        """
+
+        # check for required inputs
+        if input_dims is None:
+            raise TypeError('Must specify input dimensions')
+
+        super(FilterLayer, self).__init__(
+                scope=scope,
+                input_dims=input_dims,
+                filter_dims=[input_dims[0], 1, 1],
+                output_dims=[1]+input_dims[1:3],
+                activation_func=activation_func,
+                normalize_weights=normalize_weights,
+                weights_initializer='zeros',
+                biases_initializer='zeros',
+                reg_initializer=reg_initializer,
+                num_inh=num_inh,
+                pos_constraint=pos_constraint,
+                log_activations=log_activations)
+
+        self.include_biases = False
+    # END FilterLayer.__init__
+
+    def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
+        """By definition, the inputs will be composed of a number of input streams, given by
+        the first dimension of input_dims, and each stream will have the same number of inputs
+        as the number of output units."""
+
+        num_outputs = np.prod(self.output_dims)
+
+        with tf.name_scope(self.scope):
+            self._define_layer_variables()
+
+            if self.pos_constraint is not None:
+                w_p = tf.maximum(self.weights_var, 0.0)
+            else:
+                w_p = self.weights_var
+
+            if self.normalize_weights > 0:
+                w_pn = tf.nn.l2_normalize(w_p, axis=0)
+            else:
+                w_pn = w_p
+
+            # reshape inputs and multiply
+            mult_inputs = tf.reshape(inputs, [-1, num_outputs, self.filter_dims[0]])
+
+            if self.include_biases:
+                pre = tf.add(
+                    tf.reduce_sum(tf.multiply(mult_inputs, tf.transpose(w_pn)), axis=2),
+                    self.biases_var)
+            else:
+                pre = tf.reduce_sum(tf.multiply(mult_inputs, tf.transpose(w_pn)), axis=2)
+
+            if self.ei_mask_var is None:
+                post = self._apply_act_func(pre)
+            else:
+                post = tf.multiply(self._apply_act_func(pre), self.ei_mask_var)
+
+            self.outputs = self._apply_dropout(post, use_dropout=use_dropout,
+                                               noise_shape=[1, self.num_filters])
+
+        if self.log:
+            tf.summary.histogram('act_pre', pre)
+            tf.summary.histogram('act_post', post)
+    # END FilterLayer._build_graph
+
+
 class SpkNL_Layer(Layer):
     """Implementation of separable neural network layer; see
     http://papers.nips.cc/paper/6942-neural-system-identification-for-large-populations-separating-what-and-where

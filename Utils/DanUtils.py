@@ -475,7 +475,7 @@ def side_network_properties(side_ndn, norm_type=0):
     return props
 
 
-def side_distance(side_ndn, c1, c2, level=None, EI=None):
+def scaffold_similarity(side_ndn, c1, c2, level=None, EI=None):
     """Assume network is convolutional -- otherwise wont make sense"""
 
     ws = side_network_analyze(side_ndn)
@@ -536,24 +536,24 @@ def side_distance(side_ndn, c1, c2, level=None, EI=None):
     return np.max(ds)
 
 
-def side_distance_vector(side_ndn, c1, level=None, EI=None):
+def scaffold_similarity_vector(side_ndn, c1, level=None, EI=None):
     """compares distances between one cell and all others"""
     NC = side_ndn.networks[-1].layers[-1].weights.shape[1]
     dvec = np.zeros(NC, dtype='float32')
     for cc in range(NC):
-        dvec[cc] = side_distance(side_ndn, c1, cc, level=level, EI=EI)
+        dvec[cc] = scaffold_similarity(side_ndn, c1, cc, level=level, EI=EI)
     dvec[c1] = 1
 
     return dvec
 
 
-def side_distance_matrix(side_ndn, level=None, EI=None):
+def scaffold_similarity_matrix(side_ndn, level=None, EI=None):
 
     NC = side_ndn.networks[-1].layers[-1].weights.shape[1]
     dmat = np.ones([NC, NC], dtype='float32')
     for c1 in range(NC):
         for c2 in range(c1+1,NC):
-            dmat[c1, c2] = side_distance(side_ndn, c1, c2, level=level, EI=EI)
+            dmat[c1, c2] = scaffold_similarity(side_ndn, c1, c2, level=level, EI=EI)
             dmat[c2, c1] = dmat[c1, c2]
     return dmat
 
