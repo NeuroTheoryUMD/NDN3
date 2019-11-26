@@ -291,6 +291,10 @@ def plot_filters(ndn_mod=None, filters=None, filter_dims=None, tbasis_select=-1,
         plt.plot(ndn_mod.networks[0].layers[0].weights)
         plt.title('Temporal bases')
 
+    if num_filters > 200:
+        print('Limiting display to first 200 filters')
+        num_filters = 200
+
     if num_filters/10 == num_filters//10:
         cols = 10
     elif num_filters / 8 == num_filters // 8:
