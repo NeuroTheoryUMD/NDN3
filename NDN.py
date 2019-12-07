@@ -195,10 +195,9 @@ class NDN(object):
                     self.network_list[nn]['input_dims'] = input_dims_measured
                 # print('network %i:' % nn, input_dims_measured)
             else:
-                # print('network %i:' % nn, network_list[nn]['input_dims'],
-                # input_dims_measured )
+                # print('network %i:' % nn, network_list[nn]['input_dims'], input_dims_measured )
                 assert self.network_list[nn]['input_dims'] == \
-                       list(input_dims_measured), 'Input_dims dont match.'
+                       list(input_dims_measured), 'Input_dims dont match. network '+str(nn)
 
             # Build networks
             if self.network_list[nn]['network_type'] == 'side':
@@ -370,7 +369,8 @@ class NDN(object):
             # define cost function
             if self.noise_dist == 'gaussian':
                 with tf.name_scope('gaussian_loss'):
-                    cost.append(tf.nn.l2_loss(data_out - pred) / nt)
+                    cost.append(tf.nn.l2_loss(data_out - pred) / nt * 2)  # x2: l2_loss gives half the norm (!)
+                    #cost.append(tf.reduce_sum(tf.reduce_sum(tf.square(data_out-pred), axis=0) / nt))
                     unit_cost.append(tf.reduce_mean(tf.square(data_out-pred), axis=0))
 
             elif self.noise_dist == 'poisson':
@@ -733,6 +733,8 @@ class NDN(object):
             if blocks is None:
                 if self.batch_size is not None:
                     batch_size = self.batch_size
+                    if batch_size > data_indxs.shape[0]:
+                        batch_size = data_indxs.shape[0]
                     num_batches_test = data_indxs.shape[0] // batch_size
                 else:
                     num_batches_test = 1
@@ -771,6 +773,9 @@ class NDN(object):
                     unit_cost = sess.run(self.unit_cost, feed_dict=feed_dict)
                 else:
                     unit_cost = np.add(unit_cost, sess.run(self.unit_cost, feed_dict=feed_dict))
+                    #ucost = sess.run(self.unit_cost, feed_dict=feed_dict)
+                    #cost = sess.run(self.cost, feed_dict=feed_dict)
+                    #print(np.sum(ucost), cost)
 
             ll_neuron = np.divide(unit_cost, num_batches_test)
 
@@ -2335,7 +2340,7 @@ class NDN(object):
         print('Model pickled to %s' % save_file)
     # END NDN3.save_model
 
-    def _data_format(self, input_data, output_data, data_filters=None):
+    def _data_format(self, input_data, output_data=None, data_filters=None):
 
         if type(input_data) is not list:
             input_data = [input_data]
@@ -2349,7 +2354,7 @@ class NDN(object):
             output_data = [None] * num_outputs
             for nn in range(num_outputs):
                 output_data[nn] = np.zeros(
-                    [self.num_examples, self.networks[self.ffnet_out[nn]].layers[-1].weights.shape[1]],
+                    [self.num_examples, np.prod(self.networks[self.ffnet_out[nn]].layers[-1].output_dims)],
                     dtype='float32')
 
         if data_filters is not None:

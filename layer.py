@@ -1557,7 +1557,7 @@ class AddLayer(Layer):
                 log_activations=log_activations)
 
         # Initialize all weights to 1, which is the default combination
-        self.weights[:, :] = 1.0
+        self.weights[:, :] = 1.0/np.sqrt(num_input_streams)
         self.biases[:] = 1e-8
 
     # END AddLayer.__init__
