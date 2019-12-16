@@ -945,6 +945,8 @@ class NDN(object):
                     self.networks[nn].layers[ll].biases.copy()
                 target.networks[nn].layers[ll].reg = \
                     self.networks[nn].layers[ll].reg.reg_copy()
+                target.networks[nn].layers[ll].normalize_weights = \
+                    self.networks[nn].layers[ll].normalize_weights
             target.networks[nn].input_masks = deepcopy(self.networks[nn].input_masks)
         return target
 
