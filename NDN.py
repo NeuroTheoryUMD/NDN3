@@ -1646,6 +1646,8 @@ class NDN(object):
                 train_writer.flush()
 
                 if test_indxs is not None:
+                    # FIXME: Assuming 'data_as_var' and `test_indxs` being small enough to fit in one batch
+                    feed_dict = {self.indices: test_indxs}
                     if opt_params['run_diagnostics']:
                         summary = sess.run(
                             self.merge_summaries,
