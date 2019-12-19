@@ -2041,6 +2041,7 @@ class NDN(object):
                 train_writer.flush()
 
                 if test_blocks is not None:
+                    # FIXME: test_blocks / test_indxs are actually not used -> broken
                     if opt_params['run_diagnostics']:
                         summary = sess.run(
                             self.merge_summaries,
