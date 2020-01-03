@@ -222,24 +222,27 @@ def tbasis_recover_filters(ndn_mod):
     return ks
 
 
-def compute_spatiotemporal_filters(ndn_mod):
+def compute_spatiotemporal_filters(ndn_mod, ffnet=None):
+
+    if ffnet is None:
+        ffnet = 0
 
     # Check to see if there is a temporal layer first
-    num_lags = ndn_mod.networks[0].layers[0].num_lags
-    if num_lags == 1 and ndn_mod.networks[0].layers[0].filter_dims[0] > 1:
-        num_lags = ndn_mod.networks[0].layers[0].filter_dims[0]
-    if np.prod(ndn_mod.networks[0].layers[0].filter_dims[1:]) == 1:  # then likely temporal basis
+    num_lags = ndn_mod.networks[ffnet].layers[0].num_lags
+    if num_lags == 1 and ndn_mod.networks[ffnet].layers[0].filter_dims[0] > 1:
+        num_lags = ndn_mod.networks[ffnet].layers[0].filter_dims[0]
+    if np.prod(ndn_mod.networks[ffnet].layers[0].filter_dims[1:]) == 1:  # then likely temporal basis
         ks_flat = tbasis_recover_filters(ndn_mod)
-        if len(ndn_mod.networks[0].layers) > 1:
-            sp_dims = ndn_mod.networks[0].layers[1].filter_dims[1:]
-            other_dims = ndn_mod.networks[0].layers[1].filter_dims[0] // ndn_mod.networks[0].layers[0].num_filters
+        if len(ndn_mod.networks[ffnet].layers) > 1:
+            sp_dims = ndn_mod.networks[ffnet].layers[1].filter_dims[1:]
+            other_dims = ndn_mod.networks[ffnet].layers[1].filter_dims[0] // ndn_mod.networks[0].layers[0].num_filters
         else:
-            sp_dims = ndn_mod.networks[1].layers[0].filter_dims[1:]
-            other_dims = ndn_mod.networks[1].layers[0].filter_dims[0] // ndn_mod.networks[0].layers[0].num_filters
+            sp_dims = ndn_mod.networks[ffnet+1].layers[0].filter_dims[1:]
+            other_dims = ndn_mod.networks[ffnet+1].layers[0].filter_dims[0] // ndn_mod.networks[0].layers[0].num_filters
     else:
-        ks_flat = ndn_mod.networks[0].layers[0].weights
-        sp_dims = ndn_mod.networks[0].layers[0].filter_dims[1:3]
-        other_dims = ndn_mod.networks[0].layers[0].filter_dims[0] // num_lags
+        ks_flat = ndn_mod.networks[ffnet].layers[0].weights
+        sp_dims = ndn_mod.networks[ffnet].layers[0].filter_dims[1:3]
+        other_dims = ndn_mod.networks[ffnet].layers[0].filter_dims[0] // num_lags
     num_filters = ks_flat.shape[-1]
 
     # Reshape filters with other_dims tucked into first spatial dimension (on outside)
@@ -256,9 +259,12 @@ def compute_spatiotemporal_filters(ndn_mod):
 # END compute_spatiotemporal_filters
 
 
-def plot_filters(ndn_mod=None, filters=None, filter_dims=None, tbasis_select=-1, flipxy=False):
+def plot_filters(ndn_mod=None, filters=None, filter_dims=None, tbasis_select=-1, flipxy=False, ffnet=None):
     """Throw in NDN_mod to do defaults. Can also through in ks directly, but must be either 2-d (weights x filter)
     with filter_dims provided, or 3-d (num_lags, num_space, num_filt)"""
+
+    if ffnet is None:
+        ffnet = 0
 
     ks = filters
     temporal_basis_present = False
@@ -270,8 +276,8 @@ def plot_filters(ndn_mod=None, filters=None, filter_dims=None, tbasis_select=-1,
         else:
             assert len(ks.shape) == 3, 'filter dims must be provided or ks must be reshaped into 3d'
     else:
-        ks = compute_spatiotemporal_filters(ndn_mod=ndn_mod)
-        if np.prod(ndn_mod.networks[0].layers[0].filter_dims[1:]) == 1:
+        ks = compute_spatiotemporal_filters(ndn_mod=ndn_mod, ffnet=ffnet)
+        if np.prod(ndn_mod.networks[ffnet].layers[0].filter_dims[1:]) == 1:
             temporal_basis_present = True
 
     if len(ks.shape) > 3:
@@ -288,7 +294,7 @@ def plot_filters(ndn_mod=None, filters=None, filter_dims=None, tbasis_select=-1,
         num_filters = ks.shape[2]
 
     if temporal_basis_present:
-        plt.plot(ndn_mod.networks[0].layers[0].weights)
+        plt.plot(ndn_mod.networks[ffnet].layers[0].weights)
         plt.title('Temporal bases')
 
     if num_filters > 200:
@@ -316,13 +322,13 @@ def plot_filters(ndn_mod=None, filters=None, filter_dims=None, tbasis_select=-1,
     for nn in range(num_filters):
         ax = plt.subplot(rows, cols, nn + 1)
         if flipxy:
-            #k = np.reshape(ks[:, nn], [filter_width, num_lags])
             k = ks[:, :, nn]
         else:
-            #k = np.transpose(np.reshape(ks[:, nn], [filter_width, num_lags]))
             k = np.transpose(ks[:, :, nn])
-
-        plt.imshow(k, cmap='Greys', interpolation='none', vmin=-plt_scale, vmax=plt_scale, aspect='auto')
+        if k.shape[0] == k.shape[1]:
+            plt.imshow(k, cmap='Greys', interpolation='none', vmin=-plt_scale, vmax=plt_scale, aspect=1)
+        else:
+            plt.imshow(k, cmap='Greys', interpolation='none', vmin=-plt_scale, vmax=plt_scale, aspect='auto')
         ax.set_yticklabels([])
         ax.set_xticklabels([])
     plt.show()
