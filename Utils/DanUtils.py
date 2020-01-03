@@ -201,22 +201,25 @@ def spatial_spread(filters, axis=0):
 # END spatial_spread
 
 
-def tbasis_recover_filters(ndn_mod):
+def tbasis_recover_filters(ndn_mod, ffnet=None):
 
-    assert np.prod(ndn_mod.networks[0].layers[0].filter_dims[1:]) == 1, 'only works with temporal-only basis'
+    if ffnet is None:
+        ffnet = 0
 
-    tkerns = ndn_mod.networks[0].layers[0].weights
+    assert np.prod(ndn_mod.networks[ffnet].layers[0].filter_dims[1:]) == 1, 'only works with temporal-only basis'
+
+    tkerns = ndn_mod.networks[ffnet].layers[0].weights
     num_lags, num_tkerns = tkerns.shape
-    if len(ndn_mod.networks[0].layers) == 1:
-        non_lag_dims = np.prod(ndn_mod.networks[1].layers[0].filter_dims) // num_tkerns
-        num_filts = ndn_mod.networks[1].layers[0].weights.shape[1]
-        ws = np.reshape(ndn_mod.networks[1].layers[0].weights, [non_lag_dims, num_tkerns, num_filts])
+    if len(ndn_mod.networks[ffnet].layers) == 1:
+        non_lag_dims = np.prod(ndn_mod.networks[ffnet+1].layers[0].filter_dims) // num_tkerns
+        num_filts = ndn_mod.networks[ffnet+1].layers[0].weights.shape[1]
+        ws = np.reshape(ndn_mod.networks[ffnet+1].layers[0].weights, [non_lag_dims, num_tkerns, num_filts])
     else:
-        non_lag_dims = np.prod(ndn_mod.networks[0].layers[1].filter_dims) // num_tkerns
-        num_filts = ndn_mod.networks[0].layers[1].weights.shape[1]
-        ws = np.reshape(ndn_mod.networks[0].layers[1].weights, [non_lag_dims, num_tkerns, num_filts])
+        non_lag_dims = np.prod(ndn_mod.networks[ffnet].layers[1].filter_dims) // num_tkerns
+        num_filts = ndn_mod.networks[ffnet].layers[1].weights.shape[1]
+        ws = np.reshape(ndn_mod.networks[ffnet].layers[1].weights, [non_lag_dims, num_tkerns, num_filts])
     # num_lags = ndn_mod.networks[0].layers[0].num_lags
-    ks = np.reshape(np.matmul( tkerns, ws), [non_lag_dims*num_lags, num_filts])
+    ks = np.reshape(np.matmul(tkerns, ws), [non_lag_dims*num_lags, num_filts])
     # ks = np.zeros([non_lag_dims*num_lags, num_filts])
 
     return ks
@@ -232,7 +235,7 @@ def compute_spatiotemporal_filters(ndn_mod, ffnet=None):
     if num_lags == 1 and ndn_mod.networks[ffnet].layers[0].filter_dims[0] > 1:
         num_lags = ndn_mod.networks[ffnet].layers[0].filter_dims[0]
     if np.prod(ndn_mod.networks[ffnet].layers[0].filter_dims[1:]) == 1:  # then likely temporal basis
-        ks_flat = tbasis_recover_filters(ndn_mod)
+        ks_flat = tbasis_recover_filters(ndn_mod, ffnet=ffnet)
         if len(ndn_mod.networks[ffnet].layers) > 1:
             sp_dims = ndn_mod.networks[ffnet].layers[1].filter_dims[1:]
             other_dims = ndn_mod.networks[ffnet].layers[1].filter_dims[0] // ndn_mod.networks[0].layers[0].num_filters
