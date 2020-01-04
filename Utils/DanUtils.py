@@ -262,12 +262,20 @@ def compute_spatiotemporal_filters(ndn_mod, ffnet=None):
 # END compute_spatiotemporal_filters
 
 
-def plot_filters(ndn_mod=None, filters=None, filter_dims=None, tbasis_select=-1, flipxy=False, ffnet=None):
+def plot_filters(ndn_mod=None, filters=None, filter_dims=None, tbasis_select=-1, flipxy=False, ffnet=None, cmap=None):
     """Throw in NDN_mod to do defaults. Can also through in ks directly, but must be either 2-d (weights x filter)
     with filter_dims provided, or 3-d (num_lags, num_space, num_filt)"""
 
     if ffnet is None:
         ffnet = 0
+    # Set colormap
+    if cmap is None or cmap == 0:
+        cmap = 'Greys'
+    elif cmap == 1:
+        cmap = 'bwr'
+    elif cmap == 2:
+        cmap = 'RdBu_r'
+    # otherwise cmap must be string that works...
 
     ks = filters
     temporal_basis_present = False
@@ -329,9 +337,9 @@ def plot_filters(ndn_mod=None, filters=None, filter_dims=None, tbasis_select=-1,
         else:
             k = np.transpose(ks[:, :, nn])
         if k.shape[0] == k.shape[1]:
-            plt.imshow(k, cmap='Greys', interpolation='none', vmin=-plt_scale, vmax=plt_scale, aspect=1)
+            plt.imshow(k, cmap=cmap, interpolation='none', vmin=-plt_scale, vmax=plt_scale, aspect=1)
         else:
-            plt.imshow(k, cmap='Greys', interpolation='none', vmin=-plt_scale, vmax=plt_scale, aspect='auto')
+            plt.imshow(k, cmap=cmap, interpolation='none', vmin=-plt_scale, vmax=plt_scale, aspect='auto')
         ax.set_yticklabels([])
         ax.set_xticklabels([])
     plt.show()
