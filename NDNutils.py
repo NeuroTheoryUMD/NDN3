@@ -498,6 +498,76 @@ def create_NL_embedding(stim, bounds):
     return np.reshape(NLstim, [NT, NF*NNL])
 
 
+def reg_path(
+        ndn_mod=None,
+        input_data=None,
+        output_data=None,
+        train_indxs=None,
+        test_indxs=None,
+        blocks=None,
+        reg_type='l1',
+        reg_vals=[1e-6, 1e-4, 1e-3, 1e-2, 0.1, 1],
+        ffnet_target=0,
+        layer_target=0,
+        data_filters=None,
+        opt_params=None,
+        fit_variables=None,
+        output_dir=None,
+        cumulative=False,
+        silent=True):
+    """perform regularization over reg_vals to determine optimal cross-validated loss
+
+        Args:
+
+        Returns:
+            dict: params to initialize an `FFNetwork` object
+
+        Raises:
+            TypeError: If `layer_sizes` is not specified
+    """
+
+    if ndn_mod is None:
+        raise TypeError('Must specify NDN to regularize.')
+    if input_data is None:
+        raise TypeError('Must specify input_data.')
+    if output_data is None:
+        raise TypeError('Must specify output_data.')
+    if train_indxs is None:
+        raise TypeError('Must specify training indices.')
+    if test_indxs is None:
+        raise TypeError('Must specify testing indices.')
+
+    num_regs = len(reg_vals)
+
+    LLxs = np.zeros([num_regs], dtype='float32')
+    test_mods = []
+
+    for nn in range(num_regs):
+        if not silent:
+            if cumulative:
+                print('\nCumulative regularization test: %s = %s:\n' % (reg_type, str(reg_vals[nn])))
+            else:
+                print('\nRegularization test: %s = %s:\n' % (reg_type, str(reg_vals[nn])))
+
+        if not cumulative or (nn == 0):
+            test_mod = ndn_mod.copy_model()  # start from same base_model
+        # otherwise will continue with same test model
+
+        test_mod.set_regularization(reg_type, reg_vals[nn], ffnet_target, layer_target)
+        test_mod.train(input_data=input_data, output_data=output_data, silent=silent,
+                       train_indxs=train_indxs, test_indxs=test_indxs, blocks=blocks,
+                       data_filters=data_filters, fit_variables=fit_variables,
+                       learning_alg='adam', opt_params=opt_params, output_dir=output_dir)
+        LLxs[nn] = np.mean(
+            test_mod.eval_models(input_data=input_data, output_data=output_data, blocks=blocks,
+                                 data_indxs=test_indxs, data_filters=data_filters))
+        test_mods.append(test_mod.copy_model())
+        print('%s (%s = %s): %s' % (nn, reg_type, reg_vals[nn], LLxs[nn]))
+
+    return LLxs, test_mods
+# END reg_path
+
+
 def generate_spike_history(robs, nlags, neg_constraint=True, reg_par=0,
                            xstim_n=1):
     """Will generate X-matrix that contains Robs information for each cell. It will

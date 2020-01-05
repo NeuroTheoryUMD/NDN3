@@ -10,69 +10,6 @@ from copy import deepcopy
 from sklearn.preprocessing import normalize as sk_normalize
 
 
-def reg_path(
-        ndn_mod=None,
-        input_data=None,
-        output_data=None,
-        train_indxs=None,
-        test_indxs=None,
-        blocks=None,
-        reg_type='l1',
-        reg_vals=[1e-6, 1e-4, 1e-3, 1e-2, 0.1, 1],
-        ffnet_target=0,
-        layer_target=0,
-        data_filters=None,
-        opt_params=None,
-        fit_variables=None,
-        output_dir=None,
-        silent=True):
-
-    """perform regularization over reg_vals to determine optimal cross-validated loss
-
-        Args:
-
-        Returns:
-            dict: params to initialize an `FFNetwork` object
-
-        Raises:
-            TypeError: If `layer_sizes` is not specified
-    """
-
-    if ndn_mod is None:
-        raise TypeError('Must specify NDN to regularize.')
-    if input_data is None:
-        raise TypeError('Must specify input_data.')
-    if output_data is None:
-        raise TypeError('Must specify output_data.')
-    if train_indxs is None:
-        raise TypeError('Must specify training indices.')
-    if test_indxs is None:
-        raise TypeError('Must specify testing indices.')
-
-    num_regs = len(reg_vals)
-
-    LLxs = np.zeros([num_regs],dtype='float32')
-    test_mods = []
-
-    for nn in range(num_regs):
-        if not silent:
-            print('\nRegularization test: %s = %s:\n' % (reg_type, str(reg_vals[nn])))
-        test_mod = ndn_mod.copy_model()
-        test_mod.set_regularization(reg_type, reg_vals[nn], ffnet_target, layer_target)
-        test_mod.train(input_data=input_data, output_data=output_data, silent=silent,
-                       train_indxs=train_indxs, test_indxs=test_indxs, blocks=blocks,
-                       data_filters=data_filters, fit_variables=fit_variables,
-                       learning_alg='adam', opt_params=opt_params, output_dir=output_dir)
-        LLxs[nn] = np.mean(
-            test_mod.eval_models(input_data=input_data, output_data=output_data, blocks=blocks,
-                                 data_indxs=test_indxs, data_filters=data_filters))
-        test_mods.append(test_mod.copy_model())
-        print('%s (%s = %s): %s' % (nn, reg_type, reg_vals[nn], LLxs[nn]))
-
-    return LLxs, test_mods
-# END reg_path
-
-
 def safe_generate_predictions(
         ndn_model=None,
         input_data=None,
