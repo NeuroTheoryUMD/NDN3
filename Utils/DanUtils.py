@@ -1110,3 +1110,37 @@ def ffnet_health(ndn_mod, toplot=True):
 
     return whealth, bhealth
 
+
+def gabor_sized(dim, angle, phase_select=0):
+    k = np.zeros([2 * dim + 1, 2 * dim + 1], dtype='float32')
+    a1, a2 = np.cos(angle * np.pi / 180), np.sin(angle * np.pi / 180)
+    sigma = dim / 2
+    omega = 1.5 * np.pi / dim
+    for xx in range(-dim, dim + 1):
+        for yy in range(-dim, dim + 1):
+            if phase_select == 0:
+                k[xx + dim, yy + dim] = np.cos(omega * (a1 * xx + a2 * yy)) * np.exp(
+                    -(xx * xx + yy * yy) / (2 * sigma * sigma))
+            else:
+                k[xx + dim, yy + dim] = np.sin(omega * (a1 * xx + a2 * yy)) * np.exp(
+                    -(xx * xx + yy * yy) / (2 * sigma * sigma))
+    return k
+
+
+def gabor_array(dim, num_angles=8, both_phases=False):
+    """Make array of Gabors, sized by gabor_sized (above), which preserves one full phase within a circular
+    aperture sized relative to dim. The length of a size is 2*dim+1, centered in the middle, so this returns
+    an array of gabors with dimensions (2*dim+1)^2 x num_angles. By default it only returnes cosine gabors, but
+    making both_phases=True gives double the Gabors, with the sines following cosines."""
+
+    if both_phases:
+        num_gabors = 2*num_angles
+    else:
+        num_gabors = num_angles
+    L = 2*dim+1
+    gabors = np.zeros([L*L, num_gabors], dtype='float32')
+    for nn in range(num_angles):
+        gabors[:, nn] = np.reshape(gabor_sized(dim, nn*180/num_angles, 0), [L*L])
+        if both_phases:
+            gabors[:, nn+num_angles] = np.reshape(gabor_sized(dim, nn*180/num_angles, 1), [L*L, 1])
+    return gabors
