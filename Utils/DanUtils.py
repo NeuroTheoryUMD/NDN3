@@ -214,15 +214,15 @@ def plot_filters(ndn_mod=None, filters=None, filter_dims=None, tbasis_select=-1,
         cmap = 'RdBu_r'
     # otherwise cmap must be string that works...
 
-    ks = filters
     temporal_basis_present = False
     if ndn_mod is None:
-        assert ks is not None, 'Must supply filters or ndn_mod'
-        num_filters = ks.shape[-1]
+        assert filters is not None, 'Must supply filters or ndn_mod'
+        num_filters = filters.shape[-1]
         if filter_dims is not None:
-            ks = np.reshape(filter_dims[1], filter_dims[0], num_filters)
+            ks = np.reshape(filters, [filter_dims[1], filter_dims[0], num_filters])
         else:
-            assert len(ks.shape) == 3, 'filter dims must be provided or ks must be reshaped into 3d'
+            assert len(filters.shape) == 3, 'filter dims must be provided or ks must be reshaped into 3d'
+            ks = filters
     else:
         ks = compute_spatiotemporal_filters(ndn_mod=ndn_mod, ffnet=ffnet)
         if np.prod(ndn_mod.networks[ffnet].layers[0].filter_dims[1:]) == 1:
@@ -1127,7 +1127,7 @@ def gabor_sized(dim, angle, phase_select=0):
     return k
 
 
-def gabor_array(dim, num_angles=8, both_phases=False):
+def gabor_array(dim, num_angles=6, both_phases=False):
     """Make array of Gabors, sized by gabor_sized (above), which preserves one full phase within a circular
     aperture sized relative to dim. The length of a size is 2*dim+1, centered in the middle, so this returns
     an array of gabors with dimensions (2*dim+1)^2 x num_angles. By default it only returnes cosine gabors, but
