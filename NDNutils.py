@@ -593,6 +593,10 @@ def generate_spike_history(robs, nlags, neg_constraint=True, reg_par=0,
 def process_blocks(block_inds, data_filters, batch_size=2000, skip=20):
     """processes blocked-stimuli for train"""
 
+    if skip is None:
+        print("WARNING: no time-spread entered for using blocks. Setting to 12.")
+        skip = 12
+
     mod_df = deepcopy(data_filters)
     if len(mod_df) > 1:  # then multiple outputs and data-filters (to deal with layer
         print('WARNING: Multiple data_filters not implemented in block-processing.')

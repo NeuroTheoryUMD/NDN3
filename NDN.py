@@ -328,9 +328,9 @@ class NDN(object):
 
             # add additional ops
             # for saving and restoring models (initialized after var creation)
-            self.saver = tf.train.Saver()
+            self.saver = tf.compat.v1.train.Saver()
             # collect all summaries into a single op
-            self.merge_summaries = tf.summary.merge_all()
+            self.merge_summaries = tf.compat.v1.summary.merge_all()
             # add variable initialization op to graph
             self.init = tf.global_variables_initializer()
     # END NDN._build_graph
@@ -1285,8 +1285,9 @@ class NDN(object):
             if data_filters is None:  # produce data-filters for incorporating gaps
                 data_filters = [np.ones(output_data[0].shape, dtype='float32')]
             self.filter_data = True
+
             block_lists, data_filters, batch_comb = process_blocks(
-                blocks, data_filters, opt_params['batch_size'], self.time_spread)
+                    blocks, data_filters, opt_params['batch_size'], skip=self.time_spread)
 
         # build datasets if using 'iterator' pipeline
         if self.data_pipe_type is 'iterator':
@@ -1343,9 +1344,11 @@ class NDN(object):
                 summary_dir_train = os.path.join(
                     output_dir, 'summaries', 'train')
                 if os.path.isdir(summary_dir_train):
-                    tf.gfile.DeleteRecursively(summary_dir_train)
+                    #tf.gfile.DeleteRecursively(summary_dir_train)
+                    tf.io.gfile.rmtree(summary_dir_train)
                 os.makedirs(summary_dir_train)
-                train_writer = tf.summary.FileWriter(
+                #train_writer = tf.summary.FileWriter(
+                train_writer = tf.compat.v1.summary.FileWriter(
                     summary_dir_train, graph=sess.graph)
 
                 # remake testing summary directories
@@ -2353,12 +2356,12 @@ class NDN(object):
         if type(input_data) is not list:
             input_data = [input_data]
         self.num_examples = input_data[0].shape[0]
+        num_outputs = len(self.ffnet_out)
 
         if output_data is not None:
             if type(output_data) is not list:
                 output_data = [output_data]
         else:  # generate dummy data
-            num_outputs = len(self.ffnet_out)
             output_data = [None] * num_outputs
             for nn in range(num_outputs):
                 output_data[nn] = np.zeros(
@@ -2374,6 +2377,10 @@ class NDN(object):
             if self.filter_data:
                 self.filter_data = False
                 print('WARNING: not using data-filter despite previously using.')
+            # Make dummy data-filters to be consistent with future operations
+            data_filters = [None]*num_outputs
+            for nn in range(num_outputs):
+                data_filters[nn] = np.ones(output_data[nn].shape, dtype='float32')
 
         for temp_data in input_data:
             if temp_data.shape[0] != self.num_examples:
