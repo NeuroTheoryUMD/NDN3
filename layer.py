@@ -77,7 +77,7 @@ class Layer(object):
                 output of affine transformation
                 ['relu'] | 'sigmoid' | 'tanh' | 'identity' or 'lin' | 'softplus' | 'leaky_relu' |
                 'elu' | 'quad' | 'requ' (rect quadratic)
-            normalize_weights (int): 1 to normalize weights 0 otherwise
+            normalize_weights (int): 1 to normalize weights, -1 to apply maxnorm, and 0 to leave unnormalized
                 [0] | 1
             weights_initializer (str, optional): initializer for the weights
                 ['trunc_normal'] | 'normal' | 'zeros'
@@ -201,6 +201,8 @@ class Layer(object):
             init_weights = np.maximum(init_weights, 0)
         if normalize_weights > 0:
             init_weights = sk_normalize(init_weights, axis=0)
+        elif normalize_weights < 0:
+            init_weights = np.divide(init_weights, np.maximum(np.sqrt(np.sum(np.square(init_weights), axis=0)), 1))
 
         # Initialize numpy array that will feed placeholder
         self.weights = init_weights.astype('float32')
@@ -271,6 +273,8 @@ class Layer(object):
 
             if self.normalize_weights > 0:
                 w_pn = tf.nn.l2_normalize(w_p, axis=0)
+            elif self.normalize_weights < 0:
+                w_pn = tf.divide(w_p, tf.maximum(tf.norm(w_p, axis=0), 1))
             else:
                 w_pn = w_p
 
@@ -334,6 +338,8 @@ class Layer(object):
             self.weights = np.maximum(self.weights, 0)
         if self.normalize_weights > 0:
             self.weights = sk_normalize(self.weights, axis=0)
+        elif self.normalize_weights < 0:
+            self.weights = np.divide(self.weights, np.maximum(np.sqrt(np.sum(np.square(self.weights), axis=0)), 1))
 
         sess.run(
             [self.weights_var.initializer, self.biases_var.initializer],
@@ -353,12 +359,13 @@ class Layer(object):
 
         if self.normalize_weights > 0:
             w_pn = sk_normalize(w_p, axis=0)
+        elif self.normalize_weights < 0:
+            w_pn = np.divide(w_p, np.maximum(np.square(np.sum(np.square(w_p), axis=0)), 1))
         else:
             w_pn = w_p
 
         self.weights = w_pn
         self.biases = sess.run(self.biases_var)
-
     # END Layer.write_layer_params
 
     def define_regularization_loss(self):
@@ -371,26 +378,12 @@ class Layer(object):
 
             if self.normalize_weights > 0:
                 w_pn = tf.nn.l2_normalize(w_p, axis=0)
-                #w_pn = self._normalize_weights(self.weights_var)
-
+            elif self.normalize_weights < 0:
+                w_pn = np.divide(w_p, np.maximum(np.sqrt(np.sum(np.square(w_p), axis=0)), 1))
             else:
                 w_pn = w_p
 
             return self.reg.define_reg_loss(w_pn)
-
-    #def _normalize_weights(self, ws):
-    #    """"Normalize weights as dictated by normalize_variable"""
-    #    if self.normalize_weights > 0:
-    #        wnorms = tf.maximum(tf.sqrt(tf.reduce_sum(tf.square(ws), axis=0)), 1e-8)
-    #        ws_norm = tf.divide(ws, wnorms)
-            # another way of doing this: find the norm along axis=0, then find aaa = np.where(ws_norm > 0) and
-            # only divide ws with ws_norm in those indices (because the rest of the indices are zero vectors)
-    #    else:
-            # ws = tf.identity(self.weights_var)
-    #        ws_norm = ws
-    #return ws_norm
-
-    # END Layer._normalize_weights
 
     def set_regularization(self, reg_type, reg_val):
         """Wrapper function for setting regularization"""
@@ -443,8 +436,8 @@ class ConvLayer(Layer):
                 output of affine transformation
                 ['relu'] | 'sigmoid' | 'tanh' | 'identity' | 'softplus' | 
                 'elu' | 'quad'
-            normalize_weights (int): 1 to normalize weights 0 otherwise
-                [0] | 1
+            normalize_weights (int): 1 to normalize weights, -1 to have maxnorm,  0 otherwise
+                [0] | 1, -1
             weights_initializer (str, optional): initializer for the weights
                 ['trunc_normal'] | 'normal' | 'zeros'
             biases_initializer (str, optional): initializer for the biases
@@ -541,6 +534,8 @@ class ConvLayer(Layer):
 
             if self.normalize_weights > 0:
                 w_pn = tf.nn.l2_normalize(w_p, axis=0)
+            elif self.normalize_weights < 0:
+                w_pn = tf.divide(w_p, tf.maximum(tf.norm(w_p, axis=0), 1))
             else:
                 w_pn = w_p
 
@@ -657,8 +652,8 @@ class ConvXYLayer(Layer):
                 output of affine transformation
                 ['relu'] | 'sigmoid' | 'tanh' | 'identity' | 'softplus' |
                 'elu' | 'quad'
-            normalize_weights (int): 1 to normalize weights 0 otherwise
-                [0] | 1
+            normalize_weights (int): 1 to normalize weights, -1 to apply maxnorm, 0 otherwise
+                [0] | 1, -1
             weights_initializer (str, optional): initializer for the weights
                 ['trunc_normal'] | 'normal' | 'zeros'
             biases_initializer (str, optional): initializer for the biases
@@ -751,6 +746,8 @@ class ConvXYLayer(Layer):
 
             if self.normalize_weights > 0:
                 w_pn = tf.nn.l2_normalize(w_p, axis=0)
+            if self.normalize_weights < 0:
+                w_pn = tf.divide(w_p, tf.maximum(tf.norm(w_p, axis=0), 1))
             else:
                 w_pn = w_p
 
@@ -857,6 +854,8 @@ class SepLayer(Layer):
         #    filter_dims = [input_dims[0] * nlags + num_space, 1, 1]
         #else:
         filter_dims = [input_dims[0] + num_space, 1, 1]
+        if normalize_weights < 0:
+            print('WARNING: maxnorm not implemented for SepLayer')
 
         super(SepLayer, self).__init__(
                 scope=scope,
@@ -1200,6 +1199,8 @@ class ConvSepLayer(Layer):
             num_shifts[0] = int(np.floor(input_dims[1]/shift_spacing))
         if input_dims[2] > 1:
             num_shifts[1] = int(np.floor(input_dims[2]/shift_spacing))
+        if normalize_weights < 0:
+            print('WARNING: maxnorm not implemented for ConvSepLayer')
 
         super(ConvSepLayer, self).__init__(
                 scope=scope,
@@ -1540,6 +1541,9 @@ class AddLayer(Layer):
 
         # Input dims is just number of input streams
         input_dims = [num_input_streams, 1, 1]
+
+        if normalize_weights < 0:
+            print('WARNING: maxnorm not implemented for SepLayer')
 
         super(AddLayer, self).__init__(
                 scope=scope,

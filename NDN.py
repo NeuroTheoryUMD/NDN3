@@ -420,9 +420,9 @@ class NDN(object):
 
         # save summary of cost
         # with tf.variable_scope('summaries'):
-        tf.summary.scalar('cost', self.cost)
-        tf.summary.scalar('cost_penalized', self.cost_penalized)
-        tf.summary.scalar('reg_pen', self.cost_reg)
+        tf.compat.v1.summary.scalar('cost', self.cost)
+        tf.compat.v1.summary.scalar('cost_penalized', self.cost_penalized)
+        tf.compat.v1.summary.scalar('reg_pen', self.cost_reg)
     # END NDN._define_loss
 
     def _assign_model_params(self, sess):
@@ -1165,7 +1165,7 @@ class NDN(object):
         """
 
         if learning_alg == 'adam':
-            self.train_step = tf.train.AdamOptimizer(
+            self.train_step = tf.tf.compat.v1.train.AdamOptimizer(
                 learning_rate=opt_params['learning_rate'],
                 beta1=opt_params['beta1'],
                 beta2=opt_params['beta2'],
@@ -1358,7 +1358,7 @@ class NDN(object):
                     if os.path.isdir(summary_dir_test):
                         tf.gfile.DeleteRecursively(summary_dir_test)
                     os.makedirs(summary_dir_test)
-                    test_writer = tf.summary.FileWriter(
+                    test_writer = tf.compat.v1.summary.FileWriter(
                         summary_dir_test, graph=sess.graph)
 
             # overwrite initialized values of network with stored values
