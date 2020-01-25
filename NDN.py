@@ -1354,8 +1354,8 @@ class NDN(object):
                     tf.gfile.DeleteRecursively(summary_dir_train)
                     #tf.io.gfile.rmtree(summary_dir_train)  # not backwards compatible
                 os.makedirs(summary_dir_train)
-                #train_writer = tf.summary.FileWriter(
-                train_writer = tf.compat.v1.summary.FileWriter(
+                #train_writer = tf.compat.v1.summary.FileWriter(  # backward-compatible
+                train_writer = tf.summary.FileWriter(
                     summary_dir_train, graph=sess.graph)
 
                 # remake testing summary directories
