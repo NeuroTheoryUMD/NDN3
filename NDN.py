@@ -1351,8 +1351,8 @@ class NDN(object):
                 summary_dir_train = os.path.join(
                     output_dir, 'summaries', 'train')
                 if os.path.isdir(summary_dir_train):
-                    #tf.gfile.DeleteRecursively(summary_dir_train)
-                    tf.io.gfile.rmtree(summary_dir_train)
+                    tf.gfile.DeleteRecursively(summary_dir_train)
+                    #tf.io.gfile.rmtree(summary_dir_train)  # not backwards compatible
                 os.makedirs(summary_dir_train)
                 #train_writer = tf.summary.FileWriter(
                 train_writer = tf.compat.v1.summary.FileWriter(
