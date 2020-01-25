@@ -1165,7 +1165,7 @@ class NDN(object):
         """
 
         if learning_alg == 'adam':
-            self.train_step = tf.tf.compat.v1.train.AdamOptimizer(
+            self.train_step = tf.compat.v1.train.AdamOptimizer(
                 learning_rate=opt_params['learning_rate'],
                 beta1=opt_params['beta1'],
                 beta2=opt_params['beta2'],
