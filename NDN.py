@@ -328,9 +328,11 @@ class NDN(object):
 
             # add additional ops
             # for saving and restoring models (initialized after var creation)
-            self.saver = tf.compat.v1.train.Saver()
+            # To use once backward compat is possible: self.saver = tf.compat.v1.train.Saver()
+            self.saver = tf.train.Saver()
             # collect all summaries into a single op
-            self.merge_summaries = tf.compat.v1.summary.merge_all()
+            # Not backward-compatible: self.merge_summaries = tf.compat.v1.summary.merge_all()
+            self.merge_summaries = tf.summary.merge_all()
             # add variable initialization op to graph
             self.init = tf.global_variables_initializer()
     # END NDN._build_graph
