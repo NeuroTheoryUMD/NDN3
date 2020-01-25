@@ -360,7 +360,7 @@ class Layer(object):
         if self.normalize_weights > 0:
             w_pn = sk_normalize(w_p, axis=0)
         elif self.normalize_weights < 0:
-            w_pn = np.divide(w_p, np.maximum(np.square(np.sum(np.square(w_p), axis=0)), 1))
+            w_pn = tf.divide(w_p, tf.maximum(tf.norm(w_p, axis=0), 1))
         else:
             w_pn = w_p
 
