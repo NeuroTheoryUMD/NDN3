@@ -482,9 +482,9 @@ class ConvLayer(Layer):
         # Calculate number of shifts (for output)
         num_shifts = [1, 1]
         if input_dims[1] > 1:
-            num_shifts[0] = int(np.floor(input_dims[1]/shift_spacing))
+            num_shifts[0] = int(np.ceil(input_dims[1]/shift_spacing))
         if input_dims[2] > 1:
-            num_shifts[1] = int(np.floor(input_dims[2]/shift_spacing))
+            num_shifts[1] = int(np.ceil(input_dims[2]/shift_spacing))
 
         super(ConvLayer, self).__init__(
                 scope=scope,
@@ -542,7 +542,7 @@ class ConvLayer(Layer):
             ws_conv = tf.reshape(w_pn, conv_filter_dims)
 
             # Make strides and dilation lists
-            strides, dilation = [1, 1, 1, 1], [1, 1, 1, 1]
+            strides, dilation = [1, 1], [1, 1]
             if conv_filter_dims[0] > 1:
                 strides[0] = self.shift_spacing
                 dilation[0] = self.dilation
