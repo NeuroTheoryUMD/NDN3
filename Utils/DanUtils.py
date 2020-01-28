@@ -283,6 +283,46 @@ def plot_filters(ndn_mod=None, filters=None, filter_dims=None, tbasis_select=-1,
 # END plot_filters
 
 
+def plot_3dfilters(ndnmod=None, filters=None, dims=None):
+    if ndnmod is None:
+        if dims is None:
+            assert len(filters.shape) == 4, 'must include filter dims or reshape the input.'
+            dims = filters.shape[range(3)]
+            NK = filters.shape[-1]
+            ks = np.reshape(deepcopy(filters), [np.prod(dims), NK])
+        else:
+            NK = ks.shape[-1]
+            ks = np.reshape(deepcopy(filters), [np.prod(dims), NK])
+    else:
+        filters = DU.compute_spatiotemporal_filters(ndnmod)
+        dims = filters.shape[:3]
+        NK = filters.shape[-1]
+        ks = np.reshape(deepcopy(filters), [np.prod(dims), NK])
+
+    Ncol = 8
+    Nrow = np.ceil(2 * NK / Ncol).astype(int)
+    DU.subplot_setup(Nrow, Ncol)
+    for nn in range(NK):
+        kt = np.std(np.reshape(ks[:, nn], [dims[0] * dims[1], dims[2]]), axis=0)
+        bestlag = np.argmax(abs(kt))
+        ksp = np.reshape(ks[:, nn], dims)[:, :, bestlag]
+        ax = plt.subplot(Nrow, Ncol, 2 * nn + 1)
+        plt.plot([0, len(kt) - 1], [0, 0], 'k')
+        plt.plot(kt, 'b')
+        plt.plot(kt, 'b.')
+        plt.plot([bestlag, bestlag], [np.minimum(np.min(kt), 0) * 1.1, np.max(kt) * 1.1], 'r--')
+        plt.axis('tight')
+        plt.title('c' + str(nn))
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax = plt.subplot(Nrow, Ncol, 2 * nn + 2)
+        plt.imshow(ksp, cmap='Greys', vmin=-np.max(abs(ks[:, nn])), vmax=np.max(abs(ks[:, nn])))
+        plt.title('lag=' + str(bestlag))
+        ax.set_xticks([])
+        ax.set_yticks([])
+    plt.show()
+
+
 def side_network_analyze(side_ndn, cell_to_plot=None, plot_aspect='auto'):
     """
     Applies to NDN with a side network (conv or non-conv. It will divide up the weights
