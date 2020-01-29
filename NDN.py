@@ -1007,19 +1007,21 @@ class NDN(object):
         return null_lls
     # END NDN.get_null_ll
 
-    def set_poisson_norm(self, data_out):
+    def set_poisson_norm(self, data_out, data_filters=None):
         """Calculates the average probability per bin to normalize the Poisson likelihood"""
 
         if type(data_out) is not list:
             data_out = [data_out]
 
         self.poisson_unit_norm = []
-        for i, temp_data in enumerate(data_out):
-            nc = self.network_list[self.ffnet_out[i]]['layer_sizes'][-1]
+        for ii, temp_data in enumerate(data_out):
+            nc = self.network_list[self.ffnet_out[ii]]['layer_sizes'][-1]
             assert nc == temp_data.shape[1], 'Output of network must match robs'
+            if data_filters is not None:
+                assert nc == data_filters[ii].shape[1], 'Output of network must match data_filters'
 
             self.poisson_unit_norm.append(np.maximum(np.mean(
-                temp_data.astype('float32'), axis=0), 1e-8))
+                np.multiply(temp_data, data_filters[ii]).astype('float32'), axis=0), 1e-8))
 
     # END NDN.set_poisson_norm ####################################################
 
@@ -1324,7 +1326,7 @@ class NDN(object):
         if opt_params['poisson_unit_norm'] is not None:
             self.poisson_unit_norm = opt_params['poisson_unit_norm']
         elif (self.noise_dist == 'poisson') and (self.poisson_unit_norm is None):
-            self.set_poisson_norm(output_data)
+            self.set_poisson_norm(output_data, data_filters=data_filters)
 
         # Build graph: self.build_graph must be defined in child of network
         self._build_graph(
