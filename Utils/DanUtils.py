@@ -284,58 +284,58 @@ def plot_filters(ndn_mod=None, filters=None, filter_dims=None, tbasis_select=-1,
 
 
 def plot_3dfilters(ndnmod=None, filters=None, dims=None):
-    def plot_3dfilters(ndnmod=None, filters=None, dims=None, plot_power=False):
-        if ndnmod is None:
-            if dims is None:
-                assert len(filters.shape) == 4, 'must include filter dims or reshape the input.'
-                dims = filters.shape[range(3)]
-                NK = filters.shape[-1]
-                ks = np.reshape(deepcopy(filters), [np.prod(dims), NK])
-            else:
-                NK = ks.shape[-1]
-                ks = np.reshape(deepcopy(filters), [np.prod(dims), NK])
-        else:
-            filters = DU.compute_spatiotemporal_filters(ndnmod)
-            dims = filters.shape[:3]
+
+    if ndnmod is None:
+        if dims is None:
+            assert len(filters.shape) == 4, 'must include filter dims or reshape the input.'
+            dims = filters.shape[range(3)]
             NK = filters.shape[-1]
             ks = np.reshape(deepcopy(filters), [np.prod(dims), NK])
+        else:
+            NK = ks.shape[-1]
+            ks = np.reshape(deepcopy(filters), [np.prod(dims), NK])
+    else:
+        filters = DU.compute_spatiotemporal_filters(ndnmod)
+        dims = filters.shape[:3]
+        NK = filters.shape[-1]
+        ks = np.reshape(deepcopy(filters), [np.prod(dims), NK])
 
-        ncol = 8
-        nrow = np.ceil(2 * NK / ncol).astype(int)
-        subplot_setup(nrow, ncol)
-        for nn in range(NK):
-            ktmp = np.reshape(ks[:, nn], [dims[0] * dims[1], dims[2]])
-            tpower = np.std(ktmp, axis=0)
-            bestlag = np.argmax(abs(tpower))
-            # Calculate temporal kernels based on max at best-lag
-            bestpospix = np.argmax(ktmp[:, bestlag])
-            bestnegpix = np.argmin(ktmp[:, bestlag])
+    ncol = 8
+    nrow = np.ceil(2 * NK / ncol).astype(int)
+    subplot_setup(nrow, ncol)
+    for nn in range(NK):
+        ktmp = np.reshape(ks[:, nn], [dims[0] * dims[1], dims[2]])
+        tpower = np.std(ktmp, axis=0)
+        bestlag = np.argmax(abs(tpower))
+        # Calculate temporal kernels based on max at best-lag
+        bestpospix = np.argmax(ktmp[:, bestlag])
+        bestnegpix = np.argmin(ktmp[:, bestlag])
 
-            ksp = np.reshape(ks[:, nn], dims)[:, :, bestlag]
-            ax = plt.subplot(nrow, Ncol, 2*nn+1)
-            plt.plot([0, len(tpower)-1], [0, 0], 'k')
-            if plot_power:
-                plt.plot(tpower, 'b')
-                plt.plot(tpower, 'b.')
-                plt.plot([bestlag, bestlag], [np.minimum(np.min(kt), 0)*1.1, np.max(kt)*1.1], 'r--')
-            else:
-                plt.plot(ktmp[bestpospix, :], 'b')
-                plt.plot(ktmp[bestpospix, :], 'b.')
-                plt.plot(ktmp[bestnegpix, :], 'r')
-                plt.plot(ktmp[bestnegpix, :], 'r.')
-                minplot = np.minimum(np.min(ktmp[bestnegpix, :]), np.min(ktmp[bestpospix, :]))
-                maxplot = np.maximum(np.max(ktmp[bestnegpix, :]), np.max(ktmp[bestpospix, :]))
-                plt.plot([bestlag, bestlag], [minplot*1.1, maxplot*1.1], 'k--')
-            plt.axis('tight')
-            plt.title('c' + str(nn))
-            ax.set_xticks([])
-            ax.set_yticks([])
-            ax = plt.subplot(nrow, ncol, 2*nn+2)
-            plt.imshow(ksp, cmap='Greys', vmin=-np.max(abs(ks[:, nn])), vmax=np.max(abs(ks[:, nn])))
-            plt.title('lag=' + str(bestlag))
-            ax.set_xticks([])
-            ax.set_yticks([])
-        plt.show()
+        ksp = np.reshape(ks[:, nn], dims)[:, :, bestlag]
+        ax = plt.subplot(nrow, Ncol, 2*nn+1)
+        plt.plot([0, len(tpower)-1], [0, 0], 'k')
+        if plot_power:
+            plt.plot(tpower, 'b')
+            plt.plot(tpower, 'b.')
+            plt.plot([bestlag, bestlag], [np.minimum(np.min(kt), 0)*1.1, np.max(kt)*1.1], 'r--')
+        else:
+            plt.plot(ktmp[bestpospix, :], 'b')
+            plt.plot(ktmp[bestpospix, :], 'b.')
+            plt.plot(ktmp[bestnegpix, :], 'r')
+            plt.plot(ktmp[bestnegpix, :], 'r.')
+            minplot = np.minimum(np.min(ktmp[bestnegpix, :]), np.min(ktmp[bestpospix, :]))
+            maxplot = np.maximum(np.max(ktmp[bestnegpix, :]), np.max(ktmp[bestpospix, :]))
+            plt.plot([bestlag, bestlag], [minplot*1.1, maxplot*1.1], 'k--')
+        plt.axis('tight')
+        plt.title('c' + str(nn))
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax = plt.subplot(nrow, ncol, 2*nn+2)
+        plt.imshow(ksp, cmap='Greys', vmin=-np.max(abs(ks[:, nn])), vmax=np.max(abs(ks[:, nn])))
+        plt.title('lag=' + str(bestlag))
+        ax.set_xticks([])
+        ax.set_yticks([])
+    plt.show()
 
 def side_network_analyze(side_ndn, cell_to_plot=None, plot_aspect='auto'):
     """
