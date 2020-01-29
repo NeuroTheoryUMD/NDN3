@@ -295,7 +295,7 @@ def plot_3dfilters(ndnmod=None, filters=None, dims=None):
             NK = ks.shape[-1]
             ks = np.reshape(deepcopy(filters), [np.prod(dims), NK])
     else:
-        filters = DU.compute_spatiotemporal_filters(ndnmod)
+        filters = compute_spatiotemporal_filters(ndnmod)
         dims = filters.shape[:3]
         NK = filters.shape[-1]
         ks = np.reshape(deepcopy(filters), [np.prod(dims), NK])
@@ -336,6 +336,17 @@ def plot_3dfilters(ndnmod=None, filters=None, dims=None):
         ax.set_xticks([])
         ax.set_yticks([])
     plt.show()
+# END plot_3dfilters
+
+
+def plot_internal_weights(ws, num_inh=None):
+    ws_play = deepcopy(ws)
+    num_dim = ws.shape[0]
+    if num_inh is not None:
+        ws_play[range(num_dim-num_inh, num_dim), :] *= -1
+    m = np.max(abs(ws_play))
+    plt.imshow(ws_play, cmap='bwr', vmin=-m, vmax=m)
+
 
 def side_network_analyze(side_ndn, cell_to_plot=None, plot_aspect='auto'):
     """
