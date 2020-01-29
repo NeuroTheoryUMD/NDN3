@@ -283,7 +283,7 @@ def plot_filters(ndn_mod=None, filters=None, filter_dims=None, tbasis_select=-1,
 # END plot_filters
 
 
-def plot_3dfilters(ndnmod=None, filters=None, dims=None):
+def plot_3dfilters(ndnmod=None, filters=None, dims=None, plot_power=False):
 
     if ndnmod is None:
         if dims is None:
