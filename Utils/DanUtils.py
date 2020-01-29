@@ -312,7 +312,7 @@ def plot_3dfilters(ndnmod=None, filters=None, dims=None):
         bestnegpix = np.argmin(ktmp[:, bestlag])
 
         ksp = np.reshape(ks[:, nn], dims)[:, :, bestlag]
-        ax = plt.subplot(nrow, Ncol, 2*nn+1)
+        ax = plt.subplot(nrow, ncol, 2*nn+1)
         plt.plot([0, len(tpower)-1], [0, 0], 'k')
         if plot_power:
             plt.plot(tpower, 'b')
