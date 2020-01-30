@@ -1019,9 +1019,12 @@ class NDN(object):
             assert nc == temp_data.shape[1], 'Output of network must match robs'
             if data_filters is not None:
                 assert nc == data_filters[ii].shape[1], 'Output of network must match data_filters'
-
-            self.poisson_unit_norm.append(np.maximum(np.mean(
-                np.multiply(temp_data, data_filters[ii]).astype('float32'), axis=0), 1e-8))
+                self.poisson_unit_norm.append(np.maximum(
+                    np.divide(np.sum(np.multiply(temp_data, data_filters[ii]).astype('float32'), axis=0),
+                              np.sum(data_filters[ii].astype('float32'), axis=0)),
+                    1e-8))
+            else:
+                self.poisson_unit_norm.append(np.maximum(np.mean(temp_data.astype('float32'), axis=0), 1e-8))
 
     # END NDN.set_poisson_norm ####################################################
 
