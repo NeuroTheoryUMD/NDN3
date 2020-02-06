@@ -548,7 +548,7 @@ class ConvLayer(Layer):
                 dilation[1] = self.dilation
             if conv_filter_dims[2] > 1:
                 strides[2] = self.shift_spacing
-                strides[2] = self.dilation
+                dilation[2] = self.dilation
 
             _pre = tf.nn.conv2d(shaped_input, ws_conv, strides=strides, dilations=dilation, padding='SAME')
             pre = tf.add(_pre, self.biases_var)
