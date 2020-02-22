@@ -221,14 +221,13 @@ class NDN(object):
                 if self.time_spread is None:
                     self.time_spread = self.networks[nn].time_spread
                 else:
-                    # For now assume serial procuessing (fix latter for parrallel?
+                    # For now assume serial procuessing (fix latter for parallel?)
                     self.time_spread += self.networks[nn].time_spread
 
         # Assemble outputs
         for nn in range(len(self.ffnet_out)):
             ffnet_n = self.ffnet_out[nn]
-            self.output_sizes[nn] = \
-                self.networks[ffnet_n].layers[-1].weights.shape[1]
+            self.output_sizes[nn] = self.networks[ffnet_n].layers[-1].weights.shape[1]
     # END NDN._define_network
 
     def _build_graph(
@@ -344,36 +343,39 @@ class NDN(object):
         unit_cost = []
         for nn in range(len(self.ffnet_out)):
             if self.time_spread is None:
-                data_out = self.data_out_batch[nn]
+                time_spread = 0
+                #data_out = self.data_out_batch[nn]
             else:
-                data_out = tf.slice(self.data_out_batch[nn], [self.time_spread, 0], [-1, -1])
+                time_spread = self.time_spread
+                #data_out = tf.slice(self.data_out_batch[nn], [self.time_spread, 0], [-1, -1])
+            data_out = self.data_out_batch[nn]
 
             if self.filter_data:
                 # this will zero out predictions where there is no data, matching Robs here
                 pred_tmp = tf.multiply(
                     self.networks[self.ffnet_out[nn]].layers[-1].outputs,
                     self.data_filter_batch[nn])
-                #nt = tf.maximum(tf.reduce_sum(self.data_filter_batch[nn], axis=0), 1)
             else:
                 pred_tmp = self.networks[self.ffnet_out[nn]].layers[-1].outputs
-                #nt = tf.cast(tf.shape(pred)[0], tf.float32)
 
-            if self.time_spread is None:
+            pred = pred_tmp[time_spread:, :]
+
+            #if self.time_spread is None:
                 #nt = tf.constant(self.batch_size, dtype=tf.float32)
-                pred = pred_tmp
-            else:
-                pred = tf.slice(pred_tmp, [self.time_spread, 0], [-1, -1])  # [self.batch_size-self.time_spread, -1])
+            #    pred = pred_tmp
+            #else:
+            #    pred = tf.slice(pred_tmp, [self.time_spread, 0], [-1, -1])  # [self.batch_size-self.time_spread, -1])
                 # effective_batch_size is self.batch_size - self.time_spread
-                #nt = tf.constant(self.batch_size - self.time_spread, dtype=tf.float32)
-                #nt += -self.time_spread
             nt = tf.cast(tf.shape(pred)[0], tf.float32)
 
             # define cost function
             if self.noise_dist == 'gaussian':
                 with tf.name_scope('gaussian_loss'):
-                    cost.append(tf.nn.l2_loss(data_out - pred) / nt * 2)  # x2: l2_loss gives half the norm (!)
-                    #cost.append(tf.reduce_sum(tf.reduce_sum(tf.square(data_out-pred), axis=0) / nt))
-                    unit_cost.append(tf.reduce_mean(tf.square(data_out-pred), axis=0))
+                    #cost.append(tf.nn.l2_loss(data_out - pred) / nt * 2)  # x2: l2_loss gives half the norm (!)
+                    #unit_cost.append(tf.reduce_mean(tf.square(data_out-pred), axis=0))
+                    cost.append(tf.nn.l2_loss(data_out[time_spread:, :] - pred) / nt * 2)
+                    # x2: l2_loss gives half the norm (!)
+                    unit_cost.append(tf.reduce_mean(tf.square(data_out[time_spread:, :]-pred), axis=0))
 
             elif self.noise_dist == 'poisson':
                 with tf.name_scope('poisson_loss'):
@@ -385,12 +387,13 @@ class NDN(object):
                         cost_norm = nt
 
                     cost.append(-tf.reduce_sum(tf.divide(
-                        tf.multiply(data_out, tf.log(self._log_min + pred)) - pred,
+                        #tf.multiply(data_out, tf.log(self._log_min + pred)) - pred,
+                        tf.multiply(data_out[time_spread:, :], tf.log(self._log_min + pred)) - pred,
                         cost_norm)))
 
                     unit_cost.append(-tf.divide(
                         tf.reduce_sum(
-                            tf.multiply(data_out, tf.log(self._log_min + pred)) - pred,
+                            tf.multiply(data_out[time_spread:, :], tf.log(self._log_min + pred)) - pred,
                             axis=0),
                         cost_norm))
 
@@ -1007,24 +1010,37 @@ class NDN(object):
         return null_lls
     # END NDN.get_null_ll
 
-    def set_poisson_norm(self, data_out, data_filters=None):
-        """Calculates the average probability per bin to normalize the Poisson likelihood"""
+    def set_poisson_norm(self, data_out, data_filters=None, blocks=None, mult=1):
+        """Calculates the average probability per bin to normalize the Poisson likelihood. Will include
+        multiplying factor if this is part of the argument."""
 
         if type(data_out) is not list:
             data_out = [data_out]
+        if data_filters is not None:
+            if type(data_filters) is not list:
+                data_filters = [data_filters]
+
+        if blocks is not None:
+            indxs = []
+            for nn in range(blocks.shape[0]):
+                indxs = np.concatenate((indxs, np.array(range(blocks[nn, 0]-1, blocks[nn, 1]))), axis=0)
+            indxs = indxs.astype(int)
 
         self.poisson_unit_norm = []
         for ii, temp_data in enumerate(data_out):
             nc = self.network_list[self.ffnet_out[ii]]['layer_sizes'][-1]
             assert nc == temp_data.shape[1], 'Output of network must match robs'
+            if blocks is None:
+                indxs = range(temp_data.shape[0])
             if data_filters is not None:
                 assert nc == data_filters[ii].shape[1], 'Output of network must match data_filters'
                 self.poisson_unit_norm.append(np.maximum(
-                    np.divide(np.sum(np.multiply(temp_data, data_filters[ii]).astype('float32'), axis=0),
-                              np.sum(data_filters[ii].astype('float32'), axis=0)),
+                    np.divide(np.sum(np.multiply(temp_data[indxs, :],
+                                                 data_filters[ii][indxs, :]).astype('float32'), axis=0),
+                              np.sum(data_filters[ii].astype('float32') / mult, axis=0)),
                     1e-8))
             else:
-                self.poisson_unit_norm.append(np.maximum(np.mean(temp_data.astype('float32'), axis=0), 1e-8))
+                self.poisson_unit_norm.append(np.maximum(np.mean(temp_data[indxs,:].astype('float32'), axis=0), 1e-8))
 
     # END NDN.set_poisson_norm ####################################################
 
@@ -1329,7 +1345,7 @@ class NDN(object):
         if opt_params['poisson_unit_norm'] is not None:
             self.poisson_unit_norm = opt_params['poisson_unit_norm']
         elif (self.noise_dist == 'poisson') and (self.poisson_unit_norm is None):
-            self.set_poisson_norm(output_data, data_filters=data_filters)
+            self.set_poisson_norm(output_data, data_filters=data_filters, blocks=blocks)
 
         # Build graph: self.build_graph must be defined in child of network
         self._build_graph(
