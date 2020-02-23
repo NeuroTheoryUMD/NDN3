@@ -523,7 +523,7 @@ class ConvLayer(Layer):
             # [space-2, space-1, lags, and num_examples]
             shaped_input = tf.reshape(inputs, input_dims)
 
-            # Reshape weights (4:D:
+            # Reshape weights (4:D: [filter_height, filter_width, in_channels, out_channels])
             conv_filter_dims = [self.filter_dims[2], self.filter_dims[1], self.filter_dims[0],
                                 self.num_filters]
 
@@ -541,12 +541,12 @@ class ConvLayer(Layer):
 
             ws_conv = tf.reshape(w_pn, conv_filter_dims)
 
-            # Make strides and dilation lists
+            # Make strides and dilation lists, 2D lists were failing on TF:12.0.2 for some reason
             strides, dilation = [1, 1, 1, 1], [1, 1, 1, 1]
-            if conv_filter_dims[1] > 1:
+            if conv_filter_dims[0] > 1:             # Assumes data_format: NHWC
                 strides[1] = self.shift_spacing
                 dilation[1] = self.dilation
-            if conv_filter_dims[2] > 1:
+            if conv_filter_dims[1] > 1:
                 strides[2] = self.shift_spacing
                 dilation[2] = self.dilation
 
