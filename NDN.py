@@ -348,7 +348,6 @@ class NDN(object):
             else:
                 time_spread = self.time_spread
                 #data_out = tf.slice(self.data_out_batch[nn], [self.time_spread, 0], [-1, -1])
-            data_out = self.data_out_batch[nn]
 
             if self.filter_data:
                 # this will zero out predictions where there is no data, matching Robs here
@@ -358,24 +357,26 @@ class NDN(object):
             else:
                 pred_tmp = self.networks[self.ffnet_out[nn]].layers[-1].outputs
 
-            pred = pred_tmp[time_spread:, :]
+            #pred = pred_tmp[time_spread:, :]
 
-            #if self.time_spread is None:
-                #nt = tf.constant(self.batch_size, dtype=tf.float32)
-            #    pred = pred_tmp
-            #else:
-            #    pred = tf.slice(pred_tmp, [self.time_spread, 0], [-1, -1])  # [self.batch_size-self.time_spread, -1])
+            if time_spread == 0:
+                nt = tf.constant(self.batch_size, dtype=tf.float32)
+                data_out = self.data_out_batch[nn]
+                pred = pred_tmp
+            else:
+                data_out = tf.slice(self.data_out_batch[nn], [time_spread, 0], [-1, -1])
+                pred = tf.slice(pred_tmp, [time_spread, 0], [-1, -1])  # [self.batch_size-self.time_spread, -1])
                 # effective_batch_size is self.batch_size - self.time_spread
-            nt = tf.cast(tf.shape(pred)[0], tf.float32)
+                nt = tf.cast(tf.shape(pred)[0], tf.float32) - time_spread
 
             # define cost function
             if self.noise_dist == 'gaussian':
                 with tf.name_scope('gaussian_loss'):
-                    #cost.append(tf.nn.l2_loss(data_out - pred) / nt * 2)  # x2: l2_loss gives half the norm (!)
-                    #unit_cost.append(tf.reduce_mean(tf.square(data_out-pred), axis=0))
-                    cost.append(tf.nn.l2_loss(data_out[time_spread:, :] - pred) / nt * 2)
-                    # x2: l2_loss gives half the norm (!)
-                    unit_cost.append(tf.reduce_mean(tf.square(data_out[time_spread:, :]-pred), axis=0))
+                    cost.append(tf.nn.l2_loss(data_out - pred) / nt * 2)  # x2: l2_loss gives half the norm (!)
+                    unit_cost.append(tf.reduce_mean(tf.square(data_out-pred), axis=0))
+                    # time_spread in indexing below
+                    # cost.append(tf.nn.l2_loss(data_out[time_spread:, :] - pred) / nt * 2)
+                    # unit_cost.append(tf.reduce_mean(tf.square(data_out[time_spread:, :]-pred), axis=0))
 
             elif self.noise_dist == 'poisson':
                 with tf.name_scope('poisson_loss'):
@@ -387,15 +388,14 @@ class NDN(object):
                         cost_norm = nt
 
                     cost.append(-tf.reduce_sum(tf.divide(
-                        #tf.multiply(data_out, tf.log(self._log_min + pred)) - pred,
-                        tf.multiply(data_out[time_spread:, :], tf.log(self._log_min + pred)) - pred,
+                        tf.multiply(data_out, tf.log(self._log_min + pred)) - pred,
+                        #tf.multiply(data_out[time_spread:, :], tf.log(self._log_min + pred)) - pred,
                         cost_norm)))
 
                     unit_cost.append(-tf.divide(
-                        tf.reduce_sum(
-                            tf.multiply(data_out[time_spread:, :], tf.log(self._log_min + pred)) - pred,
-                            axis=0),
+                        tf.reduce_sum(tf.multiply(data_out, tf.log(self._log_min + pred)) - pred, axis=0),
                         cost_norm))
+                    # tf.multiply(data_out[time_spread:, :], tf.log(self._log_min + pred)) - pred,
 
             elif self.noise_dist == 'bernoulli':
                 with tf.name_scope('bernoulli_loss'):
