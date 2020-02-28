@@ -374,7 +374,7 @@ class NDN(object):
                 with tf.name_scope('gaussian_loss'):
                     cost.append(tf.nn.l2_loss(data_out - pred) / nt * 2)  # x2: l2_loss gives half the norm (!)
                     unit_cost.append(tf.reduce_mean(tf.square(data_out-pred), axis=0))
-                    # time_spread in indexing below
+                    # time_spread in indexing below -- slightly quicker it seems, but not by much...
                     # cost.append(tf.nn.l2_loss(data_out[time_spread:, :] - pred) / nt * 2)
                     # unit_cost.append(tf.reduce_mean(tf.square(data_out[time_spread:, :]-pred), axis=0))
 

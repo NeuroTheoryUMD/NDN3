@@ -553,7 +553,11 @@ def reg_path(
             test_mod = ndn_mod.copy_model()  # start from same base_model
         # otherwise will continue with same test model
 
-        test_mod.set_regularization(reg_type, reg_vals[nn], ffnet_target, layer_target)
+        if isinstance(layer_target, list):
+            for mm in range(len(layer_target)):
+                test_mod.set_regularization(reg_type, reg_vals[nn], ffnet_target, layer_target[mm])
+        else:
+            test_mod.set_regularization(reg_type, reg_vals[nn], ffnet_target, layer_target)
         test_mod.train(input_data=input_data, output_data=output_data, silent=silent,
                        train_indxs=train_indxs, test_indxs=test_indxs, blocks=blocks,
                        data_filters=data_filters, fit_variables=fit_variables,
