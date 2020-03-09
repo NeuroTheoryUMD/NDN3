@@ -389,14 +389,14 @@ class NDN(object):
 
                     if self.poisson_unit_norm is not None:
                         # normalize based on rate * time (number of spikes)
-                        cost_norm = tf.multiply(self.poisson_unit_norm[nn], nt)
+                        cost_norm = tf.maximum(tf.multiply(self.poisson_unit_norm[nn], nt), 1e-8)
                     else:
                         cost_norm = nt
 
                     cost.append(-tf.reduce_sum(tf.divide(
                         tf.multiply(data_out, tf.log(self._log_min + pred)) - pred,
                         #tf.multiply(data_out[time_spread:, :], tf.log(self._log_min + pred)) - pred,
-                        tf.maximum(cost_norm, 1))))
+                        cost_norm)))
 
                     # unit_cost does not directly take cost_norm into account -- needs to be normed
                     unit_cost.append(-tf.reduce_sum(
