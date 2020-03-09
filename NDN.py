@@ -785,13 +785,13 @@ class NDN(object):
                     unit_norms = np.sum(np.multiply(
                         output_data[nn][data_indxs, :], 
                         mod_df[nn][data_indxs, :].astype('float32')), 
-                        axis=0),
+                        axis=0)
                 else:
                     unit_norms = np.multiply(
                         deepcopy(self.poisson_unit_norm),
                         np.sum(mod_df[nn][data_indxs, :], axis=0))
         
-            ll_neuron.append(np.divide(unit_cost[nn], np.maximum(unit_norms, 1)))   
+            ll_neuron.append(np.divide(np.squeeze(unit_cost[nn]), np.maximum(unit_norms, 1)))   
         
         if nulladjusted:
             # note that ll_neuron is negative of the true log-likelihood,

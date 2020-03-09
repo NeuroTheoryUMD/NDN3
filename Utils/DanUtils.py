@@ -83,7 +83,7 @@ def filtered_eval_model(
     all_LLs = ndn_mod.eval_models(
         input_data=input_data, output_data=output_data,
         data_indxs=inds, data_filters=data_filters, nulladjusted=False)
-
+    
     # Need to cancel out and recalculate Poisson unit-norms, which might be based on
     # data_filtered firing rate (and not firing rate over inds)
     if (ndn_mod.noise_dist == 'poisson') and (ndn_mod.poisson_unit_norm is not None):
