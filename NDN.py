@@ -216,6 +216,9 @@ class NDN(object):
                         scope='network_%i' % nn,
                         params_dict=self.network_list[nn]))
 
+            # Enforce temporal spread equal at least to input lags
+            self.networks[nn].time_spread = np.maximum(self.networks[nn].time_spread, 
+                                                self.networks[nn].layers[0].num_lags)
             # Track temporal spread
             if self.networks[nn].time_spread > 0:
                 if self.time_spread is None:
@@ -340,6 +343,7 @@ class NDN(object):
         """Loss function that will be used to optimize model parameters"""
 
         cost = []
+        self.cost_iter = [] ###
         unit_cost = []
         for nn in range(len(self.ffnet_out)):
             if self.time_spread is None:
@@ -360,20 +364,22 @@ class NDN(object):
             #pred = pred_tmp[time_spread:, :]
 
             if time_spread == 0:
-                nt = tf.constant(self.batch_size, dtype=tf.float32)
+                #nt = tf.constant(self.batch_size, dtype=tf.float32)
                 data_out = self.data_out_batch[nn]
                 pred = pred_tmp
+                #nt = tf.cast(tf.shape(pred)[0], tf.float32)
             else:
                 data_out = tf.slice(self.data_out_batch[nn], [time_spread, 0], [-1, -1])
                 pred = tf.slice(pred_tmp, [time_spread, 0], [-1, -1])  # [self.batch_size-self.time_spread, -1])
                 # effective_batch_size is self.batch_size - self.time_spread
-                nt = tf.cast(tf.shape(pred)[0], tf.float32) - time_spread
+            nt = tf.cast(tf.shape(pred)[0], tf.float32) - time_spread
 
             # define cost function
             if self.noise_dist == 'gaussian':
                 with tf.name_scope('gaussian_loss'):
                     cost.append(tf.nn.l2_loss(data_out - pred) / nt * 2)  # x2: l2_loss gives half the norm (!)
-                    unit_cost.append(tf.reduce_mean(tf.square(data_out-pred), axis=0))
+                    #unit_cost.append(tf.reduce_mean(tf.square(data_out-pred), axis=0))
+                    unit_cost.append(tf.reduce_sum(tf.square(data_out-pred), axis=0)) # unnormalized
                     # time_spread in indexing below -- slightly quicker it seems, but not by much...
                     # cost.append(tf.nn.l2_loss(data_out[time_spread:, :] - pred) / nt * 2)
                     # unit_cost.append(tf.reduce_mean(tf.square(data_out[time_spread:, :]-pred), axis=0))
@@ -390,12 +396,12 @@ class NDN(object):
                     cost.append(-tf.reduce_sum(tf.divide(
                         tf.multiply(data_out, tf.log(self._log_min + pred)) - pred,
                         #tf.multiply(data_out[time_spread:, :], tf.log(self._log_min + pred)) - pred,
-                        cost_norm)))
+                        tf.maximum(cost_norm, 1))))
 
-                    unit_cost.append(-tf.divide(
-                        tf.reduce_sum(tf.multiply(data_out, tf.log(self._log_min + pred)) - pred, axis=0),
-                        cost_norm))
-                    # tf.multiply(data_out[time_spread:, :], tf.log(self._log_min + pred)) - pred,
+                    # unit_cost does not directly take cost_norm into account -- needs to be normed
+                    unit_cost.append(-tf.reduce_sum(
+                        tf.multiply(data_out, tf.log(self._log_min + pred)) - pred,
+                        axis=0))
 
             elif self.noise_dist == 'bernoulli':
                 with tf.name_scope('bernoulli_loss'):
@@ -405,14 +411,15 @@ class NDN(object):
                     cost.append(tf.reduce_mean(
                         tf.nn.sigmoid_cross_entropy_with_logits(
                             labels=data_out, logits=pred)))
-                    unit_cost.append(tf.reduce_mean(
+                    #unit_cost.append(tf.reduce_mean(
+                    unit_cost.append(tf.reduce_sum(
                             tf.nn.sigmoid_cross_entropy_with_logits(
                                 labels=data_out, logits=pred), axis=0))
             else:
                 TypeError('Cost function not supported.')
 
         self.cost = tf.add_n(cost)
-        self.unit_cost = unit_cost
+        self.unit_cost = unit_cost # this is not yet normalized
 
         # Add regularization penalties
         reg_costs = []
@@ -585,27 +592,7 @@ class NDN(object):
         """
 
         # check input
-        if type(input_data) is not list:
-            input_data = [input_data]
-        if type(output_data) is not list:
-            output_data = [output_data]
-        if data_filters is not None:
-            self.filter_data = True
-            if type(data_filters) is not list:
-                data_filters = [data_filters]
-            assert len(data_filters) == len(output_data), \
-                'Number of data filters must match output data.'
-        self.num_examples = input_data[0].shape[0]
-        for temp_data in input_data:
-            if temp_data.shape[0] != self.num_examples:
-                raise ValueError(
-                    'Input data dims must match across input_data.')
-        for nn, temp_data in enumerate(output_data):
-            if temp_data.shape[0] != self.num_examples:
-                raise ValueError('Output dim0 must match model values')
-            if self.filter_data:
-                assert data_filters[nn].shape == temp_data.shape, \
-                    'data_filter sizes must match output_data'
+        input_data, output_data, data_filters = self._data_format(input_data, output_data, data_filters)
         if data_indxs is None:
             data_indxs = np.arange(self.num_examples)
 
@@ -622,7 +609,7 @@ class NDN(object):
             self.dataset_types = dataset.output_types
             self.dataset_shapes = dataset.output_shapes
             # build iterator object to access elements from dataset
-            iterator_tr = dataset.make_one_shot_iterator()
+            # iterator_tr = dataset.make_one_shot_iterator()
 
         # Potentially place graph operations on CPU
         if not use_gpu:
@@ -645,48 +632,31 @@ class NDN(object):
                 test_indxs=data_indxs,
                 test_batch_size=self.batch_size)
 
-            #num_batches_tr = data_indxs.shape[0] // self.batch_size
-            #cost_tr = 0
-            #for batch_tr in range(num_batches_tr):
-            #    batch_indxs_tr = data_indxs[
-            #                     batch_tr * self.batch_size:(batch_tr + 1) * self.batch_size]
-            #    if self.data_pipe_type == 'data_as_var':
-            #        feed_dict = {self.indices: batch_indxs_tr}
-            #    elif self.data_pipe_type == 'feed_dict':
-            #        feed_dict = self._get_feed_dict(
-            #            input_data=input_data,
-            #            output_data=output_data,
-            #            data_filters=data_filters,
-            #            batch_indxs=batch_indxs_tr)
-            #    elif self.data_pipe_type == 'iterator':
-                    # get string handle of iterator
-            #        iter_handle_tr = sess.run(iterator_tr.string_handle())
-            #        feed_dict = {self.iterator_handle: iter_handle_tr}
-
-            #    cost_tr += sess.run(self.cost, feed_dict=feed_dict)
-
-            #cost_tr /= num_batches_tr
-
         return cost_tr
     # END get_LL
 
     def eval_models(self, input_data=None, output_data=None, data_indxs=None, blocks=None,
-                    data_filters=None, nulladjusted=False, use_gpu=False, use_dropout=False):
+                    data_filters=None, nulladjusted=False, norm_recalc=True,
+                    use_gpu=False, use_dropout=False):
         """Get cost for each output neuron without regularization terms
 
         Args:
             input_data (time x input_dim numpy array): input to model
-            output_data (time x output_dim numpy array): desired output of
-                model
+            output_data (time x output_dim numpy array): desired output of model
             data_indxs (numpy array, optional): indexes of data to use in
                 calculating forward pass; if not supplied, all data is used
-            data_filters (numpy array, optional):
-            nulladjusted (bool): subtracts the log-likelihood of a "null"
-                model that has constant [mean] firing rate
-            unit_norm (bool): if a Poisson noise-distribution, this will
-                specify whether each LL will be normalized by the mean
-                firing rate across all neurons (False) or by each neuron's
-                own firing rate (True: default).
+            data_filters (time x output_dim numpy array, optional): array of zeros and ones showing
+                where output_data is valid
+            blocks (num_blocks x 2): if data is broken into blocks, then corresponds to start- and
+                end-indices of each block in data. If set, then interpret data_indxs as numbering
+                the blocks to use (rather than indices themselves)
+            nulladjusted (bool): subtracts the log-likelihood of a "null" model that has constant
+                [mean] firing rate
+            norm_recalc (bool, def True): whether to recalculate Poisson norm given data_indxs and
+                data_filter. When True, may not match fit costs because norm could differ
+            use_gpu (boolean, default False): forces eval_models on CPU (to avoid potential memory
+                issues on GPU that lead to kernel crashing)
+            use_dropout (boolean, default False): whether to use dropout settings
 
         Returns:
             numpy array: value of log-likelihood for each unit in model. For
@@ -697,24 +667,45 @@ class NDN(object):
 
         if blocks is not None:
             self.filter_data = True
-            if data_filters is None:
-                if isinstance(output_data, list):
-                    data_filters = []
-                    for nn in range(len(output_data)):
-                        data_filters.append(np.ones(output_data[nn].shape, dtype='float32'))
-                else:
-                    data_filters = np.ones(output_data.shape, dtype='float32')
+            if data_indxs is None:
+                data_indxs = np.arange(blocks.shape[0])
+        else:
+            if data_indxs is None:
+                data_indxs = np.arange(self.num_examples)
+        if self.poisson_unit_norm is None:
+            assert norm_recalc, "Must initialize poisson_unit_norm in order not to recalculate."
 
         # check input
         input_data, output_data, data_filters = self._data_format(input_data, output_data, data_filters)
 
-        if data_indxs is None:
-            data_indxs = np.arange(self.num_examples)
+        # Make data_filters to take time_spread into account
+        #if data_filters is None:
+        #    if isinstance(output_data, list):
+        #        data_filters = []
+        #        for nn in range(len(output_data)):
+        #            data_filters.append(np.ones(output_data[nn].shape, dtype='float32'))
+        #    else:
+        #        data_filters = np.ones(output_data.shape, dtype='float32')
 
         if self.batch_size is None:
-            self.batch_size = data_indxs.shape[0]
+            batch_size = data_indxs.shape[0]
             # note this could crash if batch_size too large. but crash cause should be clear...
+        else:
+            batch_size = np.minimum(self.batch_size, data_indxs.shape[0])
+        num_batches_test = data_indxs.shape[0] // batch_size
 
+        if blocks is None:
+            mod_df = data_filters
+        else:
+            if self.time_spread > 0:
+                block_lists, mod_df, _ = process_blocks(blocks, data_filters, skip=self.time_spread)
+            else:  # enter default time spread in between blocks
+                print("WARNING: no time-spread entered for using blocks. Setting to 20.")
+                self.time_spread = 20
+
+            self.filter_data = True
+            num_batches_test = len(data_indxs)
+ 
         # build datasets if using 'iterator' pipeline -- curently not operating...
         #if self.data_pipe_type == 'iterator':
         #    dataset = self._build_dataset(
@@ -733,37 +724,21 @@ class NDN(object):
         # Place graph operations on CPU
         if not use_gpu:
             with tf.device('/cpu:0'):
-                self._build_graph(batch_size=self.batch_size, use_dropout=use_dropout)
+                self._build_graph(batch_size=batch_size, use_dropout=use_dropout)
         else:
-            self._build_graph(batch_size=self.batch_size, use_dropout=use_dropout)
+            self._build_graph(batch_size=batch_size, use_dropout=use_dropout)
 
         with tf.Session(graph=self.graph, config=self.sess_config) as sess:
-
-            if blocks is None:
-                if self.batch_size is not None:
-                    batch_size = self.batch_size
-                    if batch_size > data_indxs.shape[0]:
-                        batch_size = data_indxs.shape[0]
-                    num_batches_test = data_indxs.shape[0] // batch_size
-                else:
-                    num_batches_test = 1
-                    batch_size = data_indxs.shape[0]
-                mod_df = data_filters
-            else:
-                if self.time_spread > 0:
-                    block_lists, mod_df, _ = process_blocks(blocks, data_filters, skip=self.time_spread)
-                else:  # enter default time spread in between blocks
-                    print("WARNING: no time-spread entered for using blocks. Setting to 20.")
-                    self.time_spread = 20
-
-                self.filter_data = True
-                num_batches_test = len(data_indxs)
-
             self._restore_params(sess, input_data, output_data, data_filters=mod_df)
 
             for batch_test in range(num_batches_test):
                 if blocks is None:
                     batch_indxs_test = data_indxs[batch_test*batch_size:(batch_test+1)*batch_size]
+                    # zero-out ignored data for normalization purposes (below)
+                    for nn in range(len(self.ffnet_out)):
+                        mod_df[nn][
+                            data_indxs[batch_test*batch_size:
+                                        (batch_test*batch_size+self.time_spread)], :] = 0  
                 else:
                     batch_indxs_test = block_lists[data_indxs[batch_test]]
 
@@ -777,7 +752,7 @@ class NDN(object):
                         batch_indxs=batch_indxs_test)
                 elif self.data_pipe_type == 'iterator':
                     feed_dict = {self.iterator_handle: data_indxs}
-
+ 
                 if batch_test == 0:
                     unit_cost = sess.run(self.unit_cost, feed_dict=feed_dict)
                 else:
@@ -786,19 +761,51 @@ class NDN(object):
                     #cost = sess.run(self.cost, feed_dict=feed_dict)
                     #print(np.sum(ucost), cost)
 
-            ll_neuron = np.divide(unit_cost, num_batches_test)
-
-            if nulladjusted:
-                # note that ll_neuron is negative of the true log-likelihood,
-                # but get_null_ll is not (so + is actually subtraction)
-                for ii, temp_data in enumerate(output_data):
-                    ll_neuron[ii] = -ll_neuron[ii] - self.get_null_ll(temp_data[data_indxs, :])
-
-            if len(output_data) == 1:
-                return ll_neuron[0]
+            # Add fractional batch at end
+            if norm_recalc and self.data_pipe_type == 'data_as_var':
+                if (data_indxs.shape[0]-num_batches_test*batch_size) > 0:
+                    batch_indxs_test = data_indxs[range(num_batches_test*batch_size, data_indxs.shape[0])]
+                    feed_dict = {self.indices: batch_indxs_test}
+                    unit_cost = np.add(unit_cost, sess.run(self.unit_cost, feed_dict=feed_dict))
             else:
-                return ll_neuron
-    # END NDN3.eval_models
+                # Zero-out fractional-block data at end
+                for nn in range(len(self.ffnet_out)):
+                    mod_df[nn][data_indxs[range(num_batches_test*batch_size, data_indxs.shape[0])], :] = 0
+                
+            #ll_neuron = np.divide(np.divide(unit_cost, num_batches_test), self.poisson_unit_norm)
+            # this is the summed (not normalized) LL for each neuron
+
+        # Normalize unit_cost dependent on noise_distributions (alternative was ll_neuron)
+        ll_neuron = []
+        for nn in range(len(self.ffnet_out)):
+            if self.noise_dist == 'gaussian':  # normalize by length of non-zero Robs
+                unit_norms = np.sum(mod_df[nn][data_indxs, :], axis=0)
+            else:  # normalize by number of spikes for Poisson or Bernoulli
+                if norm_recalc:
+                    unit_norms = np.sum(np.multiply(
+                        output_data[nn][data_indxs, :], 
+                        mod_df[nn][data_indxs, :].astype('float32')), 
+                        axis=0),
+                else:
+                    unit_norms = np.multiply(
+                        deepcopy(self.poisson_unit_norm),
+                        np.sum(mod_df[nn][data_indxs, :], axis=0))
+        
+            ll_neuron.append(np.divide(unit_cost[nn], np.maximum(unit_norms, 1)))   
+        
+        if nulladjusted:
+            # note that ll_neuron is negative of the true log-likelihood,
+            # but get_null_ll is not (so + is actually subtraction)
+            for ii, temp_data in enumerate(output_data):
+                ll_neuron[ii] = -ll_neuron[ii] - self.get_null_ll(temp_data[data_indxs, :])
+
+        #self.poisson_unit_norm = deepcopy(poinorm_save)
+
+        if len(output_data) == 1:
+            return ll_neuron[0]
+        else:
+            return ll_neuron
+# END NDN.eval_models
 
     def generate_prediction(self, input_data, data_indxs=None, use_gpu=False,
                             ffnet_target=-1, layer_target=-1, use_dropout=False):
@@ -1010,7 +1017,7 @@ class NDN(object):
         return null_lls
     # END NDN.get_null_ll
 
-    def set_poisson_norm(self, data_out, data_filters=None, blocks=None, mult=1):
+    def set_poisson_norm(self, data_out, data_indxs=None, data_filters=None, blocks=None, mult=1):
         """Calculates the average probability per bin to normalize the Poisson likelihood. Will include
         multiplying factor if this is part of the argument."""
 
@@ -1021,17 +1028,25 @@ class NDN(object):
                 data_filters = [data_filters]
 
         if blocks is not None:
+            if data_indxs is None:
+                data_indxs = range(blocks.shape[0])
             indxs = []
-            for nn in range(blocks.shape[0]):
-                indxs = np.concatenate((indxs, np.array(range(blocks[nn, 0]-1, blocks[nn, 1]))), axis=0)
+            for nn in range(len(data_indxs)):
+                indxs = np.concatenate((indxs, np.array(range(blocks[data_indxs[nn], 0]-1,
+                                                              blocks[data_indxs[nn], 1]))), axis=0)
             indxs = indxs.astype(int)
+        else:
+            if data_indxs is None:
+                indxs = range(self.num_examples)
+            else:
+                indxs = data_indxs
 
         self.poisson_unit_norm = []
         for ii, temp_data in enumerate(data_out):
             nc = self.network_list[self.ffnet_out[ii]]['layer_sizes'][-1]
             assert nc == temp_data.shape[1], 'Output of network must match robs'
-            if blocks is None:
-                indxs = range(temp_data.shape[0])
+            #if blocks is None:
+            #    indxs = range(temp_data.shape[0])
             if data_filters is not None:
                 assert nc == data_filters[ii].shape[1], 'Output of network must match data_filters'
                 self.poisson_unit_norm.append(np.maximum(
@@ -1040,8 +1055,7 @@ class NDN(object):
                               np.sum(data_filters[ii].astype('float32') / mult, axis=0)),
                     1e-8))
             else:
-                self.poisson_unit_norm.append(np.maximum(np.mean(temp_data[indxs,:].astype('float32'), axis=0), 1e-8))
-
+                self.poisson_unit_norm.append(np.maximum(np.mean(temp_data[indxs, :].astype('float32'), axis=0), 1e-8))
     # END NDN.set_poisson_norm ####################################################
 
     def _initialize_data_pipeline(self):
@@ -1517,10 +1531,15 @@ class NDN(object):
         epochs_training = opt_params['epochs_training']
         epochs_ckpt = opt_params['epochs_ckpt']
         epochs_summary = opt_params['epochs_summary']
-        # Inherit batch size if relevant
+
+        # Inherit batch size for future uses, and adapt to current training
         self.batch_size = opt_params['batch_size']
+        if self.batch_size > train_indxs.shape[0]:
+            self.batch_size = train_indxs.shape[0]
+        num_batches_tr = train_indxs.shape[0] // opt_params['batch_size']
         if self.data_pipe_type != 'data_as_var':
             assert self.batch_size is not None, 'Need to assign batch_size to train.'
+
         early_stop_mode = opt_params['early_stop_mode']
         MAPest = True  # always use MAP (include regularization penalty into early stopping)
         # make compatible with previous versions that used mode 11'
@@ -1529,8 +1548,6 @@ class NDN(object):
 
         if early_stop_mode > 0:
             prev_costs = np.multiply(np.ones(opt_params['early_stop']), float('NaN'))
-
-        num_batches_tr = train_indxs.shape[0] // opt_params['batch_size']
 
         if opt_params['run_diagnostics']:
             run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
@@ -1559,7 +1576,6 @@ class NDN(object):
 
         if self.time_spread is not None:
             # get number of batches and their order for train indxs
-            num_batches_tr = train_indxs.shape[0] // self.batch_size
             batch_order = np.arange(num_batches_tr)
 
         # start training loop
@@ -1633,7 +1649,7 @@ class NDN(object):
                             output_data=output_data,
                             data_filters=data_filters,
                             test_indxs=test_indxs,
-                            test_batch_size=opt_params['batch_size'])
+                            test_batch_size=self.batch_size)
                     elif self.data_pipe_type == 'iterator':
                         cost_test = self._get_test_cost(
                             sess=sess,
@@ -1641,7 +1657,7 @@ class NDN(object):
                             output_data=output_data,
                             data_filters=data_filters,
                             test_indxs=iter_handle_test,
-                            test_batch_size=opt_params['batch_size'])
+                            test_batch_size=self.batch_size)
 
                     #if MAPest:  # then add reg_penalty to test cost (this is just for display)
                     #    cost_tr += reg_pen
@@ -1794,7 +1810,10 @@ class NDN(object):
         """Utility function to clean up code in `_train_adam` method"""
 
         if test_batch_size is not None:
+            if test_batch_size > test_indxs.shape[0]:
+                test_batch_size = test_indxs.shape[0]
             num_batches_test = test_indxs.shape[0] // test_batch_size
+            #print(test_indxs.shape[0], test_batch_size, num_batches_test)
             cost_test = 0
             for batch_test in range(num_batches_test):
                 batch_indxs_test = test_indxs[batch_test * test_batch_size:
