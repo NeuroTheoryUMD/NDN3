@@ -217,8 +217,9 @@ class NDN(object):
                         params_dict=self.network_list[nn]))
 
             # Enforce temporal spread equal at least to input lags
-            self.networks[nn].time_spread = np.maximum(self.networks[nn].time_spread, 
-                                                self.networks[nn].layers[0].num_lags)
+            #self.networks[nn].time_spread = np.maximum(self.networks[nn].time_spread, 
+            #                                    self.networks[nn].layers[0].num_lags)
+            
             # Track temporal spread
             if self.networks[nn].time_spread > 0:
                 if self.time_spread is None:
@@ -1003,7 +1004,8 @@ class NDN(object):
             if data_filters is None:
                 rbars = np.mean(robs, axis=0)
             else:
-                rbars = np.divide(np.sum(robs, axis=0), np.sum(data_filters, axis=0))
+                rbars = np.divide(np.sum(np.multiply(robs, data_filters), axis=0), 
+                                    np.maximum(np.sum(data_filters, axis=0),1))
             null_lls = np.log(rbars) - 1.0
         # elif self.noise_dist == 'bernoulli':
         else:
