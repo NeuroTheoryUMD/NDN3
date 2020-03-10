@@ -724,6 +724,11 @@ class NDN(object):
         else:
             self._build_graph(batch_size=batch_size, use_dropout=use_dropout)
 
+        if self.time_spread = None:
+            time_spread = 0
+        else:
+            time_spread = self.time_spread
+
         with tf.Session(graph=self.graph, config=self.sess_config) as sess:
             self._restore_params(sess, input_data, output_data, data_filters=mod_df)
 
@@ -734,7 +739,7 @@ class NDN(object):
                     for nn in range(len(self.ffnet_out)):
                         mod_df[nn][
                             data_indxs[batch_test*batch_size:
-                                        (batch_test*batch_size+self.time_spread)], :] = 0  
+                                        (batch_test*batch_size+time_spread)], :] = 0  
                 else:
                     batch_indxs_test = block_lists[data_indxs[batch_test]]
 
