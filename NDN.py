@@ -724,7 +724,7 @@ class NDN(object):
         else:
             self._build_graph(batch_size=batch_size, use_dropout=use_dropout)
 
-        if self.time_spread = None:
+        if self.time_spread is None:
             time_spread = 0
         else:
             time_spread = self.time_spread
