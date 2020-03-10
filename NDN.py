@@ -1018,8 +1018,8 @@ class NDN(object):
     # END NDN.get_null_ll
 
     def set_poisson_norm(self, data_out, data_indxs=None, data_filters=None, blocks=None, mult=1):
-        """Calculates the average probability per bin to normalize the Poisson likelihood. Will include
-        multiplying factor if this is part of the argument."""
+        """Calculates the average probability of spike per bin to normalize the Poisson likelihood. 
+        It Will include multiplying factor if this is part of the argument."""
 
         if type(data_out) is not list:
             data_out = [data_out]
@@ -1037,7 +1037,7 @@ class NDN(object):
             indxs = indxs.astype(int)
         else:
             if data_indxs is None:
-                indxs = range(self.num_examples)
+                indxs = range(data_out[0].shape[0])
             else:
                 indxs = data_indxs
 
@@ -1359,7 +1359,11 @@ class NDN(object):
         if opt_params['poisson_unit_norm'] is not None:
             self.poisson_unit_norm = opt_params['poisson_unit_norm']
         elif (self.noise_dist == 'poisson') and (self.poisson_unit_norm is None):
-            self.set_poisson_norm(output_data, data_filters=data_filters, blocks=blocks)
+            self.set_poisson_norm(output_data, data_filters=None, blocks=blocks)
+            # note the default should not include data_filters, since it would not accurately
+            # reflect the sampling of batches: meaning with data_filters, the normalizing
+            # firing rate would be especially high.
+            # self.set_poisson_norm(output_data, data_filters=data_filters, blocks=blocks)
 
         # Build graph: self.build_graph must be defined in child of network
         self._build_graph(
@@ -1621,8 +1625,8 @@ class NDN(object):
                 cost_tr, cost_test = 0, 0
                 for batch_tr in range(num_batches_tr):
                     # Will be contiguous data: no need to change time-spread
-                    batch_indxs_tr = train_indxs[batch_tr * opt_params['batch_size']:
-                                                 (batch_tr+1) * opt_params['batch_size']]
+                    batch_indxs_tr = train_indxs[batch_tr * self.batch_size:
+                                                 (batch_tr+1) * self.batch_size]
 
                     if self.data_pipe_type == 'data_as_var':
                         feed_dict = {self.indices: batch_indxs_tr}
