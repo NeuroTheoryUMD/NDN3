@@ -636,8 +636,7 @@ class NDN(object):
     # END get_LL
 
     def eval_models(self, input_data=None, output_data=None, data_indxs=None, blocks=None,
-                    data_filters=None, nulladjusted=False, norm_recalc=True,
-                    use_gpu=False, use_dropout=False):
+                    data_filters=None, nulladjusted=False, use_gpu=False, use_dropout=False):
         """Get cost for each output neuron without regularization terms
 
         Args:
@@ -652,8 +651,6 @@ class NDN(object):
                 the blocks to use (rather than indices themselves)
             nulladjusted (bool): subtracts the log-likelihood of a "null" model that has constant
                 [mean] firing rate
-            norm_recalc (bool, def True): whether to recalculate Poisson norm given data_indxs and
-                data_filter. When True, may not match fit costs because norm could differ
             use_gpu (boolean, default False): forces eval_models on CPU (to avoid potential memory
                 issues on GPU that lead to kernel crashing)
             use_dropout (boolean, default False): whether to use dropout settings
@@ -672,8 +669,6 @@ class NDN(object):
         else:
             if data_indxs is None:
                 data_indxs = np.arange(self.num_examples)
-        if self.poisson_unit_norm is None:
-            assert norm_recalc, "Must initialize poisson_unit_norm in order not to recalculate."
 
         # check input
         input_data, output_data, data_filters = self._data_format(input_data, output_data, data_filters)
@@ -762,7 +757,7 @@ class NDN(object):
                     #print(np.sum(ucost), cost)
 
             # Add fractional batch at end
-            if norm_recalc and self.data_pipe_type == 'data_as_var':
+            if self.data_pipe_type == 'data_as_var':
                 if (data_indxs.shape[0]-num_batches_test*batch_size) > 0:
                     batch_indxs_test = data_indxs[range(num_batches_test*batch_size, data_indxs.shape[0])]
                     feed_dict = {self.indices: batch_indxs_test}
@@ -771,9 +766,7 @@ class NDN(object):
                 # Zero-out fractional-block data at end
                 for nn in range(len(self.ffnet_out)):
                     mod_df[nn][data_indxs[range(num_batches_test*batch_size, data_indxs.shape[0])], :] = 0
-                
-            #ll_neuron = np.divide(np.divide(unit_cost, num_batches_test), self.poisson_unit_norm)
-            # this is the summed (not normalized) LL for each neuron
+            # thus far, this is the summed (not normalized) LL for each neuron
 
         # Normalize unit_cost dependent on noise_distributions (alternative was ll_neuron)
         ll_neuron = []
@@ -781,25 +774,20 @@ class NDN(object):
             if self.noise_dist == 'gaussian':  # normalize by length of non-zero Robs
                 unit_norms = np.sum(mod_df[nn][data_indxs, :], axis=0)
             else:  # normalize by number of spikes for Poisson or Bernoulli
-                if norm_recalc:
-                    unit_norms = np.sum(np.multiply(
+                unit_norms = np.sum(np.multiply(
                         output_data[nn][data_indxs, :], 
                         mod_df[nn][data_indxs, :].astype('float32')), 
-                        axis=0)
-                else:
-                    unit_norms = np.multiply(
-                        deepcopy(self.poisson_unit_norm),
-                        np.sum(mod_df[nn][data_indxs, :], axis=0))
-        
+                    axis=0)
+                    #unit_norms = np.multiply(deepcopy(self.poisson_unit_norm), len(data_indxs))
+                    #np.sum(mod_df[nn][data_indxs, :], axis=0)) # default only normalized by total time vs. amt of data
+                            
             ll_neuron.append(np.divide(np.squeeze(unit_cost[nn]), np.maximum(unit_norms, 1)))   
         
         if nulladjusted:
             # note that ll_neuron is negative of the true log-likelihood,
             # but get_null_ll is not (so + is actually subtraction)
-            for ii, temp_data in enumerate(output_data):
-                ll_neuron[ii] = -ll_neuron[ii] - self.get_null_ll(temp_data[data_indxs, :])
-
-        #self.poisson_unit_norm = deepcopy(poinorm_save)
+            for nn, temp_data in enumerate(output_data):
+                ll_neuron[nn] = -ll_neuron[nn] - self.get_null_ll(temp_data[data_indxs, :], mod_df[nn][data_indxs, :])
 
         if len(output_data) == 1:
             return ll_neuron[0]
@@ -993,13 +981,17 @@ class NDN(object):
             self.networks[self.ffnet_out[nn]].layers[-1].biases = frs
     # END NDN.initialize_output_layer_bias
 
-    def get_null_ll(self, robs):
+    def get_null_ll(self, robs, data_filters=None):
         """Calculates null-model (constant firing rate) likelihood, given Robs
         (which determines what firing rate for each cell)"""
 
         if self.noise_dist == 'gaussian':
-            # In this case, LLnull is just var of data
-            null_lls = np.var(robs, axis=0)
+            # In this case, LLnull is just var of data that exists
+            if data_filters is None:
+                null_lls = np.var(robs, axis=0)
+            else:
+                rbars = np.divide(np.multiply(data_filters, np.sum(robs, axis=0), np.sum(data_filters, axis=0)))
+                null_lls = np.divide(np.sum(np.square(np.add(robs, -rbars))), np.sum(data_filters, axis=0))
 
         elif self.noise_dist == 'poisson':
             # while the 'correct' null_ll would be `np.multiply(np.log(rbars) - 1.0, rbars)` the ll
@@ -1007,7 +999,11 @@ class NDN(object):
             # that defaults (f:set_poisson_norm) to mean of the output data. Ergo null_ll needs to
             # be normalized as well -> `rbars*(np.log(rbars) - 1)/rbars` -> `np.log(rbars) - 1`
             # See: #7
-            rbars = np.mean(robs, axis=0)
+            # Now can explicitly take into account data_filters
+            if data_filters is None:
+                rbars = np.mean(robs, axis=0)
+            else:
+                rbars = np.divide(np.sum(robs, axis=0), np.sum(data_filters, axis=0))
             null_lls = np.log(rbars) - 1.0
         # elif self.noise_dist == 'bernoulli':
         else:
