@@ -736,10 +736,11 @@ class NDN(object):
                 if blocks is None:
                     batch_indxs_test = data_indxs[batch_test*batch_size:(batch_test+1)*batch_size]
                     # zero-out ignored data for normalization purposes (below)
-                    for nn in range(len(self.ffnet_out)):
-                        mod_df[nn][
-                            data_indxs[batch_test*batch_size:
-                                        (batch_test*batch_size+time_spread)], :] = 0  
+                    if time_spread > 0:
+                        for nn in range(len(self.ffnet_out)):
+                            mod_df[nn][
+                                data_indxs[batch_test*batch_size:
+                                            (batch_test*batch_size+time_spread)], :] = 0  
                 else:
                     batch_indxs_test = block_lists[data_indxs[batch_test]]
 
@@ -2416,6 +2417,10 @@ class NDN(object):
         if output_data is not None:
             if type(output_data) is not list:
                 output_data = [output_data]
+            # add dimensions to output data as needed
+            for nn in range(len(output_data)):
+                if len(output_data[nn].shape) == 1:
+                    output_data[nn] = np.expand_dims(output_data[nn], 1)
         else:  # generate dummy data
             output_data = [None] * num_outputs
             for nn in range(num_outputs):

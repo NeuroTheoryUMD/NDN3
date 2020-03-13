@@ -512,6 +512,7 @@ def reg_path(
         data_filters=None,
         opt_params=None,
         fit_variables=None,
+        learning_alg = 'adam',
         output_dir=None,
         cumulative=False,
         silent=True):
@@ -561,7 +562,7 @@ def reg_path(
         test_mod.train(input_data=input_data, output_data=output_data, silent=silent,
                        train_indxs=train_indxs, test_indxs=test_indxs, blocks=blocks,
                        data_filters=data_filters, fit_variables=fit_variables,
-                       learning_alg='adam', opt_params=opt_params, output_dir=output_dir)
+                       learning_alg=learning_alg, opt_params=opt_params, output_dir=output_dir)
         LLxs[nn] = np.mean(
             test_mod.eval_models(input_data=input_data, output_data=output_data, blocks=blocks,
                                  data_indxs=test_indxs, data_filters=data_filters))
