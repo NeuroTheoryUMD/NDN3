@@ -1012,7 +1012,7 @@ class NDN(object):
             else:
                 rbars = np.divide(np.sum(np.multiply(robs, data_filters), axis=0), 
                                     np.maximum(np.sum(data_filters, axis=0),1))
-            null_lls = np.log(rbars) - 1.0
+            null_lls = np.log(rbars+self._log_min) - 1.0
         # elif self.noise_dist == 'bernoulli':
         else:
             null_lls = [0] * robs.shape[1]
