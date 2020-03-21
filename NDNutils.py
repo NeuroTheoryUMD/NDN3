@@ -596,7 +596,7 @@ def generate_spike_history(robs, nlags, neg_constraint=True, reg_par=0,
 
 
 def process_blocks(block_inds, data_filters, batch_size=2000, skip=20):
-    """processes blocked-stimuli for train"""
+    """processes blocked-stimuli for train. Note that it assumes matlab indexing (starting with 1)"""
 
     if skip is None:
         print("WARNING: no time-spread entered for using blocks. Setting to 12.")
@@ -620,6 +620,19 @@ def process_blocks(block_inds, data_filters, batch_size=2000, skip=20):
         mod_df[nn] = data_filters[nn]*np.expand_dims(val_inds,1)
 
     return block_lists, mod_df, comb_number
+
+
+def make_block_indices( block_lims, lag_skip=0):
+    """return all the indices within the blocks passed. Similar to function above: perhaps
+    could be combined in the future if above could process things less complicated."""
+
+    block_inds = np.array([])
+    for nn in range(block_lims.shape[0]):
+        if block_lims[nn,0]-1+lag_skip < block_lims[nn,1]:
+            block_inds = np.concatenate((block_inds, np.array(
+                range(block_lims[nn,0]-1+lag_skip, block_lims[nn,1]))), axis=0)
+    return block_inds.astype(int)
+
 
 
 def generate_xv_folds(nt, fold=5, num_blocks=3):

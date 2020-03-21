@@ -15,6 +15,7 @@ from .ffnetwork import FFNetwork
 from .ffnetwork import SideNetwork
 from .NDNutils import concatenate_input_dims
 from .NDNutils import process_blocks
+from .NDNutils import make_block_indices
 
 class NDN(object):
     """Tensorflow (tf) implementation of Neural Deep Network class
@@ -663,45 +664,41 @@ class NDN(object):
                 positive if better than the null-model.
         """
 
-        if blocks is not None:
-            self.filter_data = True
-            if data_indxs is None:
-                data_indxs = np.arange(blocks.shape[0])
+        # check input
+        input_data, output_data, mod_df = self._data_format(input_data, output_data, data_filters)
+
+        # arrange parameters that affect data processing
+
+        if self.time_spread is None:
+            time_spread = 0
         else:
+            time_spread = self.time_spread
+
+        if blocks is None:
             if data_indxs is None:
                 data_indxs = np.arange(self.num_examples)
 
-        # check input
-        input_data, output_data, data_filters = self._data_format(input_data, output_data, data_filters)
+            # Handle constant batch-size
+            if self.batch_size is None:
+                batch_size = data_indxs.shape[0]
+                # note this could crash if batch_size too large. but crash cause should be clear...
+            else:
+                batch_size = np.minimum(self.batch_size, data_indxs.shape[0])
+            num_batches_test = data_indxs.shape[0] // batch_size
 
-        # Make data_filters to take time_spread into account
-        #if data_filters is None:
-        #    if isinstance(output_data, list):
-        #        data_filters = []
-        #        for nn in range(len(output_data)):
-        #            data_filters.append(np.ones(output_data[nn].shape, dtype='float32'))
-        #    else:
-        #        data_filters = np.ones(output_data.shape, dtype='float32')
-
-        if self.batch_size is None:
-            batch_size = data_indxs.shape[0]
-            # note this could crash if batch_size too large. but crash cause should be clear...
-        else:
-            batch_size = np.minimum(self.batch_size, data_indxs.shape[0])
-        num_batches_test = data_indxs.shape[0] // batch_size
-
-        if blocks is None:
-            mod_df = data_filters
-        else:
+        else:  # process block information (variable batch-size)
+            self.filter_data = True
+            batch_size = None
+            if data_indxs is None:
+                data_indxs = np.arange(blocks.shape[0])
             if self.time_spread > 0:
-                block_lists, mod_df, _ = process_blocks(blocks, data_filters, skip=self.time_spread)
+                block_lists, mod_df, _ = process_blocks(blocks, mod_df, skip=self.time_spread)
             else:  # enter default time spread in between blocks
                 print("WARNING: no time-spread entered for using blocks. Setting to 20.")
-                self.time_spread = 20
-
-            self.filter_data = True
+                self.time_spread = 12
+            # data_indxs is number of blocks    
             num_batches_test = len(data_indxs)
- 
+   
         # build datasets if using 'iterator' pipeline -- curently not operating...
         #if self.data_pipe_type == 'iterator':
         #    dataset = self._build_dataset(
@@ -724,24 +721,22 @@ class NDN(object):
         else:
             self._build_graph(batch_size=batch_size, use_dropout=use_dropout)
 
-        if self.time_spread is None:
-            time_spread = 0
-        else:
-            time_spread = self.time_spread
-
         with tf.Session(graph=self.graph, config=self.sess_config) as sess:
             self._restore_params(sess, input_data, output_data, data_filters=mod_df)
 
             for batch_test in range(num_batches_test):
                 if blocks is None:
                     batch_indxs_test = data_indxs[batch_test*batch_size:(batch_test+1)*batch_size]
-                    # zero-out ignored data for normalization purposes (below)
+                    # Incorporate time-spread for constant batch size by zeroing-out ignored data 
+                    # for normalization purposes (below).
                     if time_spread > 0:
                         for nn in range(len(self.ffnet_out)):
                             mod_df[nn][
                                 data_indxs[batch_test*batch_size:
                                             (batch_test*batch_size+time_spread)], :] = 0  
                 else:
+                    # note for blocks, data_indxs is actually numbering the blocks to use
+                    # Also note: mod_df already takes time_spread into account above
                     batch_indxs_test = block_lists[data_indxs[batch_test]]
 
                 if self.data_pipe_type == 'data_as_var':
@@ -759,42 +754,50 @@ class NDN(object):
                     unit_cost = sess.run(self.unit_cost, feed_dict=feed_dict)
                 else:
                     unit_cost = np.add(unit_cost, sess.run(self.unit_cost, feed_dict=feed_dict))
-                    #ucost = sess.run(self.unit_cost, feed_dict=feed_dict)
-                    #cost = sess.run(self.cost, feed_dict=feed_dict)
-                    #print(np.sum(ucost), cost)
-
+ 
             # Add fractional batch at end
-            if self.data_pipe_type == 'data_as_var':
-                if (data_indxs.shape[0]-num_batches_test*batch_size) > 0:
-                    batch_indxs_test = data_indxs[range(num_batches_test*batch_size, data_indxs.shape[0])]
-                    feed_dict = {self.indices: batch_indxs_test}
-                    unit_cost = np.add(unit_cost, sess.run(self.unit_cost, feed_dict=feed_dict))
-            else:
-                # Zero-out fractional-block data at end
-                for nn in range(len(self.ffnet_out)):
-                    mod_df[nn][data_indxs[range(num_batches_test*batch_size, data_indxs.shape[0])], :] = 0
+            if blocks is None:
+                if self.data_pipe_type == 'data_as_var':
+                    if (data_indxs.shape[0]-num_batches_test*batch_size) > 0:
+                        batch_indxs_test = data_indxs[range(num_batches_test*batch_size, data_indxs.shape[0])]
+                        feed_dict = {self.indices: batch_indxs_test}
+                        unit_cost = np.add(unit_cost, sess.run(self.unit_cost, feed_dict=feed_dict))
+                else:
+                    # Zero-out fractional-block data at end that is not used in unit_cost calc
+                    for nn in range(len(self.ffnet_out)):
+                        mod_df[nn][data_indxs[range(num_batches_test*batch_size, data_indxs.shape[0])], :] = 0
             # thus far, this is the summed (not normalized) LL for each neuron
 
-        # Normalize unit_cost dependent on noise_distributions (alternative was ll_neuron)
+        # Normalize unit_cost dependent on noise_distributions 
         ll_neuron = []
         for nn in range(len(self.ffnet_out)):
             if self.noise_dist == 'gaussian':  # normalize by length of non-zero Robs
                 unit_norms = np.sum(mod_df[nn][data_indxs, :], axis=0)
             else:  # normalize by number of spikes for Poisson or Bernoulli
-                unit_norms = np.sum(np.multiply(
-                        output_data[nn][data_indxs, :], 
-                        mod_df[nn][data_indxs, :].astype('float32')), 
-                    axis=0)
+                if blocks is None:
+                    unit_norms = np.sum(np.multiply(
+                            output_data[nn][data_indxs, :], 
+                            mod_df[nn][data_indxs, :].astype('float32')), 
+                        axis=0)
+                else:
+                    indxs_test = make_block_indices(blocks[data_indxs, :])
+                    unit_norms = np.sum( np.multiply(output_data[nn][indxs_test, :], 
+                            mod_df[nn][indxs_test, :].astype('float32')), axis=0) 
                     #unit_norms = np.multiply(deepcopy(self.poisson_unit_norm), len(data_indxs))
                     #np.sum(mod_df[nn][data_indxs, :], axis=0)) # default only normalized by total time vs. amt of data
-                            
             ll_neuron.append(np.divide(np.squeeze(unit_cost[nn]), np.maximum(unit_norms, 1)))   
         
         if nulladjusted:
             # note that ll_neuron is negative of the true log-likelihood,
             # but get_null_ll is not (so + is actually subtraction)
             for nn, temp_data in enumerate(output_data):
-                ll_neuron[nn] = -ll_neuron[nn] - self.get_null_ll(temp_data[data_indxs, :], mod_df[nn][data_indxs, :])
+                if blocks is None:
+                    null_lls = self.get_null_ll(temp_data[data_indxs, :], mod_df[nn][data_indxs, :])
+                else: 
+                    indxs_test = make_block_indices(blocks[data_indxs, :], lag_skip=self.time_spread)
+                    null_lls = self.get_null_ll(temp_data[indxs_test, :], mod_df[nn][indxs_test, :])
+
+                ll_neuron[nn] = -ll_neuron[nn] - null_lls
 
         if len(output_data) == 1:
             return ll_neuron[0]
@@ -830,7 +833,7 @@ class NDN(object):
         self.filter_data = False
 
         # validate function inputs (includes generating dummy output_data)
-        input_data, output_data, data_filters = self._data_format(input_data, None, None)
+        input_data, output_data, _ = self._data_format(input_data, None, None)
 
         if data_indxs is None:
             data_indxs = np.arange(self.num_examples)
