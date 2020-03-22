@@ -1198,14 +1198,17 @@ def gabor_array(dim, num_angles=6, both_phases=False):
     an array of gabors with dimensions (2*dim+1)^2 x num_angles. By default it only returnes cosine gabors, but
     making both_phases=True gives double the Gabors, with the sines following cosines."""
 
+    L = 2*dim+1
     if both_phases:
+        gabors = np.zeros([L*L, num_angles, 2], dtype='float32')
         num_gabors = 2*num_angles
     else:
         num_gabors = num_angles
-    L = 2*dim+1
-    gabors = np.zeros([L*L, num_gabors], dtype='float32')
+        gabors = np.zeros([L*L, num_angles, 1], dtype='float32')
+    #gabors = np.zeros([L*L, num_gabors], dtype='float32')
     for nn in range(num_angles):
-        gabors[:, nn] = np.reshape(gabor_sized(dim, nn*180/num_angles, 0), [L*L])
+        gabors[:, nn, 0] = np.reshape(gabor_sized(dim, nn*180/num_angles, 0), [L*L])
         if both_phases:
-            gabors[:, nn+num_angles] = np.reshape(gabor_sized(dim, nn*180/num_angles, 1), [L*L, 1])
-    return gabors
+            gabors[:, nn, 1] = np.reshape(gabor_sized(dim, nn*180/num_angles, 1), [L*L])
+    
+    return np.reshape(gabors, [L*L, num_gabors])
