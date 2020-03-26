@@ -288,7 +288,7 @@ def plot_3dfilters(ndnmod=None, filters=None, dims=None, plot_power=False):
     if ndnmod is None:
         if dims is None:
             assert len(filters.shape) == 4, 'must include filter dims or reshape the input.'
-            dims = filters.shape[range(3)]
+            dims = filters.shape[:3]
             NK = filters.shape[-1]
             ks = np.reshape(deepcopy(filters), [np.prod(dims), NK])
         else:
