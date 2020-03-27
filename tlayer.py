@@ -159,9 +159,9 @@ class TLayer(Layer):
             self.outputs = tf.reshape(tf.transpose(_post, [1, 0, 2, 3]), (-1, np.prod(self.output_dims)))
 
         if self.log:
-            tf.summary.histogram('act_pre', pre)
-            tf.summary.histogram('act_post', post)
-    # END TLayer.build_graph
+            tf.summary.histogram('act_pre', _pre)
+            tf.summary.histogram('act_post', _post)
+            # END TLayer.build_graph
 
 
 class CaTentLayer(Layer):

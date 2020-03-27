@@ -232,7 +232,7 @@ class NDN(object):
         # Assemble outputs
         for nn in range(len(self.ffnet_out)):
             ffnet_n = self.ffnet_out[nn]
-            self.output_sizes[nn] = self.networks[ffnet_n].layers[-1].weights.shape[1]
+            self.output_sizes[nn] = np.prod(self.networks[ffnet_n].layers[-1].output_dims)
     # END NDN._define_network
 
     def _build_graph(

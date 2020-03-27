@@ -200,7 +200,12 @@ class FFNetwork(object):
         self.time_spread = np.sum(self.time_expand)
 
         for nn in range(self.num_layers):
-            # Add time lags to first input dimension
+
+            # Augment layer_sizes to take into account output of convolutional layers
+            if nn > 0:
+                layer_sizes[nn] = deepcopy(self.layers[nn-1].output_dims)
+
+            # Add time lags to input dimensions if time_expand
             if self.time_expand[nn] > 0:
                 if not isinstance(layer_sizes[nn], list):
                     layer_sizes[nn] = [layer_sizes[nn], 1, 1]
@@ -289,8 +294,8 @@ class FFNetwork(object):
                     pos_constraint=network_params['pos_constraints'][nn],
                     log_activations=network_params['log_activations']))
 
-                if nn < self.num_layers:
-                    layer_sizes[nn+1] = self.layers[nn].output_dims.copy()
+                #if nn < self.num_layers:
+                #    layer_sizes[nn+1] = deepcopy(self.layers[nn].output_dims)
 
             elif self.layer_types[nn] == 'spkNL':
 
@@ -343,8 +348,8 @@ class FFNetwork(object):
                         log_activations=network_params['log_activations']))
 
                 # Modify output size to take into account shifts
-                if nn < self.num_layers:
-                    layer_sizes[nn+1] = self.layers[nn].output_dims.copy()
+                #if nn < self.num_layers:
+                #    layer_sizes[nn+1] = self.layers[nn].output_dims.copy()
 
             elif self.layer_types[nn] == 'temporal':
                 self.layers.append(TLayer(

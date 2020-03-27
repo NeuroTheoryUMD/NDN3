@@ -1179,7 +1179,7 @@ def ffnet_health(ndn_mod, toplot=True):
 def gabor_sized(dim, angle, phase_select=0):
     k = np.zeros([2 * dim + 1, 2 * dim + 1], dtype='float32')
     a1, a2 = np.cos(angle * np.pi / 180), np.sin(angle * np.pi / 180)
-    sigma = dim / 2
+    sigma = dim / np.sqrt(6)
     omega = 1.5 * np.pi / dim
     for xx in range(-dim, dim + 1):
         for yy in range(-dim, dim + 1):
