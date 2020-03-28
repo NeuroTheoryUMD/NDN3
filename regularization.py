@@ -31,7 +31,7 @@ class Regularization(object):
 
     _allowed_reg_types = ['l1', 'l2', 'norm2', 'norm2_space', 'norm2_filt',
                           'd2t', 'd2x', 'd2xt', 'local', 'glocal', 'center',
-                          'max', 'max_filt', 'max_space', 'max_level', 'dropout']
+                          'max', 'max_filt', 'max_space', 'max_level', 'dropout', 'orth']
 
     def __init__(self, input_dims=None, num_outputs=None, vals=None):
         """Constructor for Regularization class
@@ -286,6 +286,11 @@ class Regularization(object):
                                        transpose_a=True)))
             else:
                 reg_pen = tf.constant(0.0)
+        elif reg_type == 'orth':
+            diagonal = np.ones(weights.shape[1], dtype='float32')
+            # sum( (W^TW - I).^2)
+            reg_pen = tf.multiply(self.vals_var['orth'],
+                tf.reduce_sum(tf.square(tf.math.subtract(tf.matmul(tf.transpose(weights), weights),tf.linalg.diag(diagonal)))))
         else:
             reg_pen = tf.constant(0.0)
         return reg_pen
