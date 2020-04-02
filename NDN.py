@@ -2481,7 +2481,7 @@ class NDN(object):
         # Look for time_expansions not paired with temporal layers
         for nn in range(self.num_networks):
             if np.sum(self.network_list[nn]['time_expand']) > 0:
-                for ll in range(len(self.num_networks[nn].layers)):
+                for ll in range(len(self.networks[nn].layers)):
                     if (self.network_list[nn]['time_expand'][ll] > 0) and \
                             (self.network_list[nn]['layer_types'][ll] != 'temporal'):
                         can_we = False
