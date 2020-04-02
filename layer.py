@@ -847,13 +847,19 @@ class SepLayer(Layer):
         else:
             input_dims = [1, input_dims, 1]  # assume 1-dimensional (space)
 
+        # Determine number of lags
+        if len(input_dims) > 3:
+            num_lags = input_dims[3]
+        else:
+            num_lags = 1
+
         # Determine filter dimensions (first dim + space_dims)
         num_space = input_dims[1]*input_dims[2]
 
         #if nlags is not None:
         #    filter_dims = [input_dims[0] * nlags + num_space, 1, 1]
         #else:
-        filter_dims = [input_dims[0] + num_space, 1, 1]
+        filter_dims = [input_dims[0]*num_lags + num_space, 1, 1]
         if normalize_weights < 0:
             print('WARNING: maxnorm not implemented for SepLayer')
 
@@ -1773,113 +1779,6 @@ class MultLayer(Layer):
     # END MultLayer.write_layer_params
 
 
-class FunnelLayer(Layer):
-    def __init__(
-            self,
-            scope=None,
-            input_dims=None,  # this can be a list up to 3-dimensions
-            output_list=None,
-            activation_func='lin',
-            pos_constraint=None,
-            log_activations=False):
-        """Constructor for FunnelLayer class
-            GOAL IS TO TAKE FIXED SUBSET OF SPATIAL POSITIONS and project down -- not clear yet
-            how to pass output_list through, and broadcast weights across filter[0] dimensions 
-            (which are preserved)
-        Args:
-            scope (str): name scope for variables and operations in layer
-            input_dims (int): dimensions of input data
-            output_dims (int): dimensions of output data
-            activation_func (str, optional): pointwise function applied to
-                output of affine transformation
-                ['relu'] | 'sigmoid' | 'tanh' | 'identity' | 'softplus' |
-                'elu' | 'quad'
-            normalize_weights (int): type of normalization to apply to the
-                weights. Default [0] is to normalize across the first dimension
-                (time/filters), but '1' will normalize across spatial
-                dimensions instead, and '2' will normalize both
-            reg_initializer (dict, optional): see Regularizer docs for info
-            num_inh (int, optional): number of inhibitory units in layer
-            pos_constraint (None, valued, optional): True to constrain layer weights to
-                be positive
-            log_activations (bool, optional): True to use tf.summary on layer
-                activations
-        """
-
-        # check for required inputs
-        if input_dims is None:
-            raise TypeError('Must specify input and output dimensions')
-
-        if type(input_dims) is not list:
-            input_dims = [1, input_dims, 1]
-
-        # will project all filter-input dimensions into next layer, selecting only spatial positions
-        output_dims = [input_dims[0], output_list.shape[0], 1]
-
-        super(FunnelLayer, self).__init__(
-                scope=scope,
-                input_dims=input_dims,
-                filter_dims=[1, 1, 1],
-                output_dims=num_outputs,
-                activation_func=activation_func,
-                normalize_weights=0,
-                weights_initializer='zeros',
-                biases_initializer='zeros',
-                reg_initializer=reg_initializer,
-                num_inh=0,
-                pos_constraint=pos_constraint,
-                log_activations=log_activations)
-
-        # Write funnel-specific information:
-        self.output_list = output_list.astype(int)
-        self.num_space = np.prod(input_dims[1:])
-
-        assert np.max(self.output_list) < self.num_space-1, 'Funnel: output_list elements out of range'
-
-        # Initialize all weights to 1, which is the default combination
-        self.weights[:, :] = 1.0
-        self.biases[:] = 1e-8
-    # END FunnelLayer.__init__
-
-    def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
-        """By definition, the inputs will be composed of a multi-dimensional input stream, and
-        the output_list will select out spatial dimensions of the input to select"""
-
-        #num_input_streams = self.input_dims[0]
-        num_outputs = self.output_dims[1]
-        # inputs will be NTx(num_input_streamsxnum_outputs)
-
-        with tf.name_scope(self.scope):
-            self._define_layer_variables()
-
-            if self.pos_constraint is not None:
-                w_p = tf.maximum(self.weights_var, 0.0)
-            else:
-                w_p = self.weights_var
-
-            if self.normalize_weights > 0:
-                w_pn = tf.nn.l2_normalize(w_p, axis=0)
-            else:
-                w_pn = w_p
-
-            #flattened_weights = tf.reshape(w_pn, [1, num_input_streams*num_outputs])
-
-            # reshape inputs and multiply
-            #mult_inputs = tf.reduce_prod(tf.reshape(inputs, [-1, 2, num_outputs]), axis=1)
-            input_shaped = tf.reshape(inputs, [-1, self.input_dims[0], self.num_space])
-            pre = tf.add(tf.multiply(input_shaped[:, :, self.output_list], w_pn), self.biases_var)
-
-            post = self._apply_act_func(pre)
-
-            self.outputs = self._apply_dropout(post, use_dropout=use_dropout,
-                                               noise_shape=[1, self.num_filters])
-
-        if self.log:
-            tf.summary.histogram('act_pre', pre)
-            tf.summary.histogram('act_post', post)
-    # END FunnelLayer._build_graph
-
-
 class FilterLayer(Layer):
     """This layer has a weight vector to be applied to dim-0 (# filters) of input stimulus, with
     a different filter for each of the other (spatial) dimensions. Thus, there needs to be a filter
@@ -1988,7 +1887,6 @@ class SpkNL_Layer(Layer):
     """Implementation of separable neural network layer; see
     http://papers.nips.cc/paper/6942-neural-system-identification-for-large-populations-separating-what-and-where
     for more info
-
     """
 
     def __init__(

@@ -398,8 +398,8 @@ class FFNetwork(object):
                     log_activations=network_params['log_activations']))
 
                 # Modify output size to take into account shifts
-                if nn < self.num_layers:
-                    layer_sizes[nn + 1] = self.layers[nn].output_dims.copy()
+                #if nn < self.num_layers:
+                #    layer_sizes[nn + 1] = self.layers[nn].output_dims.copy()
 
             elif self.layer_types[nn] == 'convsep':
 
@@ -429,8 +429,8 @@ class FFNetwork(object):
                     log_activations=network_params['log_activations']))
 
                 # Modify output size to take into account shifts
-                if nn < self.num_layers:
-                    layer_sizes[nn+1] = self.layers[nn].output_dims.copy()
+                #if nn < self.num_layers:
+                #    layer_sizes[nn+1] = self.layers[nn].output_dims.copy()
 
             elif self.layer_types[nn] == 'hadi_readout':
 
@@ -453,8 +453,8 @@ class FFNetwork(object):
                     log_activations=network_params['log_activations']))
 
                 # Modify output size to take into account shifts
-                if nn < self.num_layers:
-                    layer_sizes[nn + 1] = self.layers[nn].output_dims
+                #if nn < self.num_layers:
+                #    layer_sizes[nn + 1] = self.layers[nn].output_dims
 
             elif self.layer_types[nn] == 'biconv':
 
@@ -487,8 +487,8 @@ class FFNetwork(object):
                     log_activations=network_params['log_activations']))
 
                 # Modify output size to take into account shifts
-                if nn < self.num_layers:
-                    layer_sizes[nn+1] = self.layers[nn].output_dims.copy()
+                #if nn < self.num_layers:
+                #    layer_sizes[nn+1] = self.layers[nn].output_dims.copy()
 
             elif self.layer_types[nn] == 'convLNL':
 
@@ -518,8 +518,8 @@ class FFNetwork(object):
                     log_activations=network_params['log_activations']))
 
                 # Modify output size to take into account shifts
-                if nn < self.num_layers:
-                    layer_sizes[nn+1] = self.layers[nn].output_dims.copy()
+                #if nn < self.num_layers:
+                #    layer_sizes[nn+1] = self.layers[nn].output_dims.copy()
             else:
                 raise TypeError('Layer type %i not defined.' % nn)
     # END FFNetwork._define_network

@@ -666,9 +666,11 @@ class NDN(object):
 
         # check input
         input_data, output_data, mod_df = self._data_format(input_data, output_data, data_filters)
-
+        var_batch_size = self._variable_batch_size_permitted()
+        if not var_batch_size:
+            assert blocks is None, 'Cannot use blocks: variable batch size not permitted.'
+            
         # arrange parameters that affect data processing
-
         if self.time_spread is None:
             time_spread = 0
         else:
@@ -757,7 +759,7 @@ class NDN(object):
  
             # Add fractional batch at end
             if blocks is None:
-                if self.data_pipe_type == 'data_as_var':
+                if var_batch_size:
                     if (data_indxs.shape[0]-num_batches_test*batch_size) > 0:
                         batch_indxs_test = data_indxs[range(num_batches_test*batch_size, data_indxs.shape[0])]
                         feed_dict = {self.indices: batch_indxs_test}
@@ -1001,6 +1003,10 @@ class NDN(object):
                 null_lls = np.var(robs, axis=0)
             else:
                 rbars = np.divide(np.multiply(data_filters, np.sum(robs, axis=0), np.sum(data_filters, axis=0)))
+                rbars = np.divide(np.sum(np.multiply(data_filters, robs), axis=0), 
+                                    np.maximum((np.sum(data_filters, axis=0), 1)))
+                rbars = np.divide(np.multiply(data_filters, np.sum(robs, axis=0)), np.sum(data_filters, axis=0)) # Correct IMHO
+
                 null_lls = np.divide(np.sum(np.square(np.add(robs, -rbars))), np.sum(data_filters, axis=0))
 
         elif self.noise_dist == 'poisson':
@@ -2463,6 +2469,24 @@ class NDN(object):
                     data_filters[nn] = np.expand_dims(data_filters[nn], axis=1)
                 assert data_filters[nn].shape == output_data[nn].shape, 'data_filter sizes must match output_data'
         return input_data, output_data, data_filters
+
+    def _variable_batch_size_permitted( self ):
+        """determines whether model can use variable batch_sizes"""
+        
+        if self.data_pipe_type == 'data_as_var':
+            can_we = True
+        else:
+            can_we = False
+        
+        # Look for time_expansions not paired with temporal layers
+        for nn in range(self.num_networks):
+            if np.sum(self.network_list[nn]['time_expand']) > 0:
+                for ll in range(len(self.num_networks[nn].layers)):
+                    if (self.network_list[nn]['time_expand'][ll] > 0) and \
+                            (self.network_list[nn]['layer_types'][ll] != 'temporal'):
+                        can_we = False
+        return can_we
+
 
     # noinspection PyInterpreter
     @classmethod
