@@ -144,7 +144,7 @@ class Layer(object):
             num_outputs = np.prod(output_dims)
         else:
             num_outputs = output_dims
-            output_dims = [1, output_dims, 1]
+            output_dims = [output_dims, 1, 1]
 
         self.output_dims = output_dims[:]
         # default to have N filts for N outputs in base layer class
@@ -614,6 +614,157 @@ class ConvLayer(Layer):
 #     def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
 
 
+class ConvReadoutLayer(Layer):
+    """Reduces convolutional input to single output (num_outputs) with each output corresponding
+    to one spatial location within the conv input, specified by internal variable xy_out. Weights 
+    are over filter_dimensions after spatial reduction
+
+    Attributes:
+        shift_spacing (int): stride of convolution operation
+        num_shifts (int): number of shifts in horizontal and vertical
+            directions for convolution operation
+    """
+
+    def __init__(
+            self,
+            scope=None,
+            input_dims=None,  # this can be a list up to 3-dimensions
+            num_filters=None,
+            shift_spacing=1,
+            activation_func='relu',
+            xy_out=None,
+            normalize_weights=0,
+            weights_initializer='normal',
+            biases_initializer='zeros',
+            reg_initializer=None,
+            num_inh=0,
+            pos_constraint=None,
+            log_activations=False):
+        """Constructor for ConvLayerXY class
+
+        Args:
+            scope (str): name scope for variables and operations in layer
+            input_dims (int or list of ints): dimensions of input data
+            num_filters (int): number of convolutional filters in layer
+            filter_dims (int or list of ints): dimensions of input data
+            shift_spacing (int): stride of convolution operation
+            xy_out (int array): num_filters x 2 array for the spatial output of each filter
+            activation_func (str, optional): pointwise function applied to
+                output of affine transformation
+                ['relu'] | 'sigmoid' | 'tanh' | 'identity' | 'softplus' |
+                'elu' | 'quad'
+            normalize_weights (int): 1 to normalize weights, -1 to apply maxnorm, 0 otherwise
+                [0] | 1, -1
+            weights_initializer (str, optional): initializer for the weights
+                ['trunc_normal'] | 'normal' | 'zeros'
+            biases_initializer (str, optional): initializer for the biases
+                'trunc_normal' | 'normal' | ['zeros']
+            reg_initializer (dict, optional): see Regularizer docs for info
+            num_inh (int, optional): number of inhibitory units in layer
+            pos_constraint (None, valued): True to constrain layer weights to
+                be positive
+            log_activations (bool, optional): True to use tf.summary on layer
+                activations
+
+        Raises:
+            ValueError: If `pos_constraint` is `True`
+
+        Does not currently save indices -- have to be set manually, externally at the moment
+        """
+
+        # Process stim and filter dimensions
+        if isinstance(input_dims, list):
+            while len(input_dims) < 3:
+                input_dims.append(1)
+        else:
+            # assume 1-dimensional 
+            input_dims = [input_dims, 1, 1]
+
+        # Internal representation will be 3-dimensional, combining num_lags with input_dims[0]
+        if len(input_dims) > 3:
+            self.num_lags = input_dims[3]
+            input_dims[0] *= input_dims[3]
+        else:
+            self.num_lags = 1
+        self.input_dims = input_dims[:3].copy()
+        assert np.prod(self.input_dims[1:]) > 1, 'ConvReadout must be reading out input with spatial dims.'
+
+        filter_dims = [self.input_dims[0], 1, 1]
+
+        # If output dimensions already established, just strip out num_filters
+        if isinstance(num_filters, list):
+            num_filters = num_filters[0]
+
+        super(ConvReadoutLayer, self).__init__(
+            scope=scope,
+            input_dims=input_dims,
+            filter_dims=filter_dims,
+            output_dims=num_filters,  # Note difference from layer
+            activation_func=activation_func,
+            normalize_weights=normalize_weights,
+            weights_initializer=weights_initializer,
+            biases_initializer=biases_initializer,
+            reg_initializer=reg_initializer,
+            num_inh=num_inh,
+            pos_constraint=pos_constraint,  # note difference from layer (not anymore)
+            log_activations=log_activations)
+
+        
+        self.xy_out = xy_out
+    # END ConvReadoutLayer.__init__
+
+    def _space_collapse_tensor(self):
+
+        assert self.xy_out is not None, 'xy_out in ConvReadout must be set.'
+        num_space = np.prod(self.input_dims[1:])
+
+        pysct = np.zeros([self.input_dims[2], self.input_dims[1], self.xy_out.shape[0]])
+        pysct[self.xy_out] = 1.0
+        return np.reshape(pysct, [num_space, self.xy_out.shape[0]])       
+
+    def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
+
+        #assert params_dict is not None, 'Incorrect Layer initialization.'
+
+        with tf.name_scope(self.scope):
+            self._define_layer_variables()
+
+            # Collapse spatial-convolution across space
+            sct = tf.constant(self._space_collapse_tensor(), dtype=tf.float32)
+
+            shaped_input = tf.reshape(inputs, [-1, self.input_dims[2]*self.input_dims[1], self.input_dims[0]])
+            spatial_collapse_stim = tf.tensordot( shaped_input, sct, [1, 0])
+
+            # Prepare weights
+            if self.pos_constraint is not None:
+                w_p = tf.maximum(self.weights_var, 0.0)
+            else:
+                w_p = self.weights_var
+
+            if self.normalize_weights > 0:
+                w_pn = tf.nn.l2_normalize(w_p, axis=0)
+            if self.normalize_weights < 0:
+                w_pn = tf.divide(w_p, tf.maximum(tf.norm(w_p, axis=0), 1))
+            else:
+                w_pn = w_p
+
+            _pre = tf.add(tf.reduce_sum(
+                tf.multiply(spatial_collapse_stim, w_pn), axis=1), self.biases_var)
+
+            if self.ei_mask_var is None:
+                _post = self._apply_act_func(_pre)
+            else:
+                _post = tf.multiply(self._apply_act_func(_pre), self.ei_mask_var)
+
+            self.outputs = self._apply_dropout(_post, use_dropout=use_dropout,
+                            noise_shape=[1, self.num_filters])
+                
+        if self.log:
+            tf.summary.histogram('act_pre', _pre)
+            tf.summary.histogram('act_post', _post)
+    # END ConvXYLayer.build_graph
+
+
 class ConvXYLayer(Layer):
     """Implementation of convolutional layer with additional XY output
 
@@ -668,17 +819,17 @@ class ConvXYLayer(Layer):
         Raises:
             ValueError: If `pos_constraint` is `True`
 
+        Does not currently save indices -- have to be set manually, externally at the moment
         """
 
-        print('Not yet vetted in NDN3')
         # Process stim and filter dimensions
         # (potentially both passed in as num_inputs list)
         if isinstance(input_dims, list):
             while len(input_dims) < 3:
                 input_dims.append(1)
         else:
-            # assume 1-dimensional (space)
-            input_dims = [1, input_dims, 1]
+            # assume 1-dimensional 
+            input_dims = [input_dims, 1, 1]
 
  #       if xy_out is not None:
   #          filter_dims = [input_dims[0], 1, 1]
@@ -724,6 +875,7 @@ class ConvXYLayer(Layer):
     # END ConvXYLayer.__init__
 
     def _get_indices(self, batch_sz):
+        """Old function used for previous implementation"""
         nc = self.num_filters
         space_ind = zip(np.repeat(np.arange(batch_sz), nc),
                         np.tile(self.xy_out[:, 1], (batch_sz,)),
@@ -731,13 +883,23 @@ class ConvXYLayer(Layer):
                         np.tile(np.arange(nc), (batch_sz,)))
         return tf.constant(space_ind, dtype=tf.int32)
 
+    def _space_collapse_tensor(self):
+        num_space = np.prod(self.num_shifts)
+
+        pysct = np.zeros([self.num_shifts[0], self.num_shifts[1], self.xy_out.shape[0]])
+        pysct[self.xy_out] = 1.0
+        return np.reshape(pysct, [num_space, self.xy_out.shape[0]])       
+
     def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
 
-        assert params_dict is not None, 'Incorrect siLayer initialization.'
-        # Unfold siLayer-specific parameters for building graph
+        assert params_dict is not None, 'Incorrect Layer initialization.'
+        # Unfold Layer-specific parameters for building graph
 
         with tf.name_scope(self.scope):
             self._define_layer_variables()
+
+            # Define spatial-collapse tensor
+            sct = tf.constant(self._space_collapse_tensor(), dtype=tf.float32)
 
             if self.pos_constraint is not None:
                 w_p = tf.maximum(self.weights_var, 0.0)
@@ -754,7 +916,6 @@ class ConvXYLayer(Layer):
             ws_conv = tf.reshape(w_pn, [self.filter_dims[2], self.filter_dims[1], self.filter_dims[0], self.num_filters])
             shaped_input = tf.reshape(inputs, [-1, self.input_dims[2], self.input_dims[1], self.input_dims[0]])
 
-            # yaeh this should be the case:
             strides = [1, 1, 1, 1]
             if self.filter_dims[2] > 1:
                 strides[1] = self.shift_spacing
@@ -763,9 +924,15 @@ class ConvXYLayer(Layer):
 
             _pre0 = tf.nn.conv2d(shaped_input, ws_conv, strides, padding='SAME')
 
+            print(sct)
+            print(_pre0)
+
             if self.xy_out is not None:
-                indices = self._get_indices(int(shaped_input.shape[0]))
-                _pre = tf.reshape(tf.gather_nd(_pre0, indices), (-1, self.num_filters))
+                #indices = self._get_indices(batch_size)
+                #_pre = tf.reshape(tf.gather_nd(_pre0, indices), (-1, self.num_filters))
+                _pre = tf.tensordot(tf.reshape(_pre0, [-1, self.num_filters, self.num_shifts[0]*self.num_shifts[1] ]),
+                                    sct, [2, 0])
+                print(_pre)
             else:
                 _pre = _pre0
 
@@ -816,7 +983,7 @@ class SepLayer(Layer):
 
         Args:
             scope (str): name scope for variables and operations in layer
-            input_dims (int): dimensions of input data
+            input_dims (int): dimensions of input data: [num_filter_dims, NX, NY, num_lags]
             output_dims (int): dimensions of output data
             activation_func (str, optional): pointwise function applied to
                 output of affine transformation
@@ -847,18 +1014,13 @@ class SepLayer(Layer):
         else:
             input_dims = [1, input_dims, 1]  # assume 1-dimensional (space)
 
-        # Determine number of lags
+        # Determine filter dimensions
         if len(input_dims) > 3:
             num_lags = input_dims[3]
         else:
             num_lags = 1
-
-        # Determine filter dimensions (first dim + space_dims)
         num_space = input_dims[1]*input_dims[2]
 
-        #if nlags is not None:
-        #    filter_dims = [input_dims[0] * nlags + num_space, 1, 1]
-        #else:
         filter_dims = [input_dims[0]*num_lags + num_space, 1, 1]
         if normalize_weights < 0:
             print('WARNING: maxnorm not implemented for SepLayer')

@@ -373,6 +373,22 @@ class FFNetwork(object):
                 if nn < self.num_layers:
                     layer_sizes[nn+1] = self.layers[nn].output_dims
 
+            elif self.layer_types[nn] == 'conv_readout':
+
+                self.layers.append(ConvReadoutLayer(
+                    scope='conv_readout_layer_%i' % nn,
+                    input_dims=layer_sizes[nn],
+                    num_filters=layer_sizes[nn + 1],
+                    xy_out=network_params['xy_out'][nn],
+                    activation_func=network_params['activation_funcs'][nn],
+                    normalize_weights=network_params['normalize_weights'][nn],
+                    weights_initializer=network_params['weights_initializers'][nn],
+                    biases_initializer=network_params['biases_initializers'][nn],
+                    reg_initializer=network_params['reg_initializers'][nn],
+                    num_inh=network_params['num_inh'][nn],
+                    pos_constraint=network_params['pos_constraints'][nn],
+                    log_activations=network_params['log_activations']))
+
             elif self.layer_types[nn] == 'conv_xy':
 
                 if network_params['conv_filter_widths'][nn] is not None:
