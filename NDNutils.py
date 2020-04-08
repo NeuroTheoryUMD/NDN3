@@ -731,7 +731,7 @@ def pick_gpu_lowest_memory():
     return best_gpu
 
 
-def setup_one_gpu( gpu_choice=None):
+def setup_one_gpu(gpu_choice=None):
     assert not 'tensorflow' in sys.modules, "GPU setup must happen before importing TensorFlow"
     if gpu_choice is None:
         print('\n---> setting up GPU with largest available memory:')
@@ -749,7 +749,7 @@ def setup_no_gpu():
     os.environ["CUDA_VISIBLE_DEVICES"] = ''
 
 
-def assign_gpu( gpu_choice=None):
+def assign_gpu(gpu_choice=None):
     print('*******************************************************************************************')
 
     print('---> getting list of available GPUs:')

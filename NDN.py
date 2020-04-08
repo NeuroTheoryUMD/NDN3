@@ -2606,7 +2606,7 @@ class NDN(object):
 
         if learning_alg is 'adam':
             if 'learning_rate' not in opt_params:
-                opt_params['learning_rate'] = 1e-3
+                opt_params['learning_rate'] = 1e-4
             if 'batch_size' not in opt_params:
                 opt_params['batch_size'] = None
             if 'epochs_training' not in opt_params:
@@ -2616,7 +2616,7 @@ class NDN(object):
             if 'epochs_summary' not in opt_params:
                 opt_params['epochs_summary'] = None
             if 'early_stop' not in opt_params:
-                opt_params['early_stop'] = 11
+                opt_params['early_stop'] = 1
             if 'beta1' not in opt_params:
                 opt_params['beta1'] = 0.9
             if 'beta2' not in opt_params:
