@@ -2622,7 +2622,7 @@ class NDN(object):
             if 'beta2' not in opt_params:
                 opt_params['beta2'] = 0.999
             if 'epsilon' not in opt_params:
-                opt_params['epsilon'] = 1e-4
+                opt_params['epsilon'] = 1e-8
             if 'run_diagnostics' not in opt_params:
                 opt_params['run_diagnostics'] = False
 
