@@ -264,12 +264,12 @@ def concatenate_input_dims(parent_input_size, added_input_size):
     cat_dims = expand_input_dims_to_3d(added_input_size)
 
     if parent_input_size is not None:
-        # Sum full vector along the second dimension (first spatial)
-        assert parent_input_size[0] == cat_dims[0], \
+        # Sum full vector along the first dimension ("filter" dimension)
+        assert parent_input_size[1] == cat_dims[1], \
             'First dimension of inputs do not agree.'
         assert parent_input_size[2] == cat_dims[2], \
             'Last dimension of inputs do not agree.'
-        cat_dims[1] += parent_input_size[1]
+        cat_dims[0] += parent_input_size[0]
 
     return cat_dims
 
