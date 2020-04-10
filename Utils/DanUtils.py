@@ -10,134 +10,7 @@ from copy import deepcopy
 from sklearn.preprocessing import normalize as sk_normalize
 
 
-def safe_generate_predictions(
-        ndn_model=None,
-        input_data=None,
-        data_indxs=None,
-        output_units=None,
-        safe_blk_size=100000):
-
-    """This will return each neuron model evaluated on valid indices (given datafilter).
-    It will also return those valid indices for each unit"""
-
-    if ndn_model is None:
-        raise TypeError('Must specify NDN to regularize.')
-    if input_data is None:
-        raise TypeError('Must specify input_data.')
-    if data_indxs is None:
-        X = input_data
-    else:
-        assert np.max(data_indxs) < input_data.shape[0], 'data_indxs too large'
-        X = input_data[data_indxs, :]
-    NT = X.shape[0]
-    num_outputs = np.prod(ndn_model.networks[ndn_model.ffnet_out[0]].layers[-1].output_dims)
-    if output_units is None:
-        output_units = range(num_outputs)
-    else:
-        assert np.max(output_units) < num_outputs
-
-    preds = np.zeros([NT, num_outputs])
-
-    for nn in range(int(np.ceil(NT/safe_blk_size))):
-        indxs = range(safe_blk_size*nn, np.min([NT, safe_blk_size*(nn+1)]))
-        print('Generating prediction for', indxs[0], 'to', indxs[-1])
-        tmp = ndn_model.generate_prediction(input_data=X[indxs, :])
-        preds[indxs, :] = tmp[:, output_units]
-
-    return preds
-# END safe_generate_predictions
-
-
-def filtered_eval_model(
-        unit_number,
-        ndn_mod=None,
-        input_data=None,
-        output_data=None,
-        test_indxs=None,
-        data_filters=None,
-        nulladjusted=False):
-
-    """This will return each neuron model evaluated on valid indices (given datafilter).
-    It will also return those valid indices for each unit"""
-
-    if ndn_mod is None:
-        raise TypeError('Must specify NDN to regularize.')
-    if input_data is None:
-        raise TypeError('Must specify input_data.')
-    if output_data is None:
-        raise TypeError('Must specify output_data.')
-    if test_indxs is None:
-        raise TypeError('Must specify testing indices.')
-
-    if data_filters is None:
-        inds = test_indxs
-        if ndn_mod.filter_data is None:
-            print('This should [probably] include data_filter given model history.')
-    else:
-        inds = np.intersect1d(test_indxs, np.where(data_filters[:, int(unit_number)] > 0))
-
-    if len(inds) == 0:
-        print("  Warning: no valid indices for cell %d." % unit_number)
-        return 0
-
-    all_LLs = ndn_mod.eval_models(
-        input_data=input_data, output_data=output_data,
-        data_indxs=inds, data_filters=data_filters, nulladjusted=False)
-    
-    # Need to cancel out and recalculate Poisson unit-norms, which might be based on
-    # data_filtered firing rate (and not firing rate over inds)
-    if (ndn_mod.noise_dist == 'poisson') and (ndn_mod.poisson_unit_norm is not None):
-        real_norm = np.mean(output_data[inds, int(unit_number)])
-        all_LLs = np.divide(
-            np.multiply(all_LLs, ndn_mod.poisson_unit_norm[0]), real_norm)
-        # note the zero indexing poisson norm is necessary because its now a list
-
-    if not nulladjusted:
-        LLreturn = all_LLs[int(unit_number)]
-    else:
-        LLreturn = -all_LLs[int(unit_number)]-ndn_mod.get_null_ll(output_data[inds, int(unit_number)])
- 
-    return LLreturn
-# END filtered_eval_model
-
-
-def spatial_profile_info(xprofile):
-    """Calculate the mean and standard deviation of xprofile along one dimension"""
-    # Calculate mean of filter
-
-    if isinstance(xprofile, list):
-        k = np.square(np.array(xprofile))
-    else:
-        k = np.square(xprofile.copy())
-
-    NX = xprofile.shape[0]
-
-    nrms = np.maximum(np.sum(k), 1e-10)
-    mn_pos = np.divide(np.sum(np.multiply(k, range(NX))), nrms)
-    xs = np.array([range(NX)] * np.ones([NX, 1])) - np.array([mn_pos] * np.ones([NX, 1]))
-    stdev = np.sqrt(np.divide(np.sum(np.multiply(k, np.square(xs))), nrms))
-    return mn_pos, stdev
-# END spatial_profile_info
-
-
-def spatial_spread(filters, axis=0):
-    """Calculate the spatial spread of a list of filters along one dimension"""
-
-    # Calculate mean of filter
-    k = np.square(filters.copy())
-    if axis > 0:
-        k = np.transpose(k)
-    NX, NF = filters.shape
-
-    nrms = np.maximum(np.sum(k,axis=0), 1e-10)
-    mn_pos = np.divide(np.sum(np.multiply(np.transpose(k), range(NX)), axis=1), nrms)
-    xs = np.array([range(NX)] * np.ones([NF, 1])) - np.transpose(np.array([mn_pos] * np.ones([NX, 1])))
-    stdevs = np.sqrt(np.divide(np.sum(np.multiply(np.transpose(k), np.square(xs)), axis=1), nrms))
-
-    return stdevs
-# END spatial_spread
-
-
+## EXTRACT FILTER FROM NDN -- Various  functions
 def tbasis_recover_filters(ndn_mod, ffnet=None):
 
     if ffnet is None:
@@ -454,7 +327,71 @@ def side_network_analyze(side_ndn, cell_to_plot=None, plot_aspect='auto'):
     return ws
 
 
+def plot_2dweights( w, input_dims=None, num_inh=0):
+    """w can be one dimension (in which case input_dims is required) or already shaped. """
+
+    if input_dims is not None:
+        w = np.reshape(w, [input_dims[1], input_dims[0]])
+    else:
+        input_dims = [w.shape[1], w.shape[0]]
+
+    num_exc = input_dims[0]-num_inh
+    w = np.divide(w, np.max(np.abs(w)))
+
+    fig, ax = plt.subplots(1)
+
+    if num_inh > 0:
+        w[:, num_exc:] = np.multiply(w[:, num_exc:], -1)
+        plt.imshow(w, interpolation='none', cmap='bwr', vmin=-1, vmax=1)
+    else:
+        plt.imshow(w, aspect='auto', interpolation='none', cmap='Greys', vmin=0, vmax=1)
+    if num_inh > 0:
+        plt.plot(np.multiply([1, 1], num_exc-0.5), [-0.5, input_dims[1]-0.5], 'k')
+    ax.set_yticklabels([])
+    ax.set_xticklabels([])
+
+
+## SPATIAL MEASUREMENT FUNCTIONS
+def spatial_profile_info(xprofile):
+    """Calculate the mean and standard deviation of xprofile along one dimension"""
+    # Calculate mean of filter
+
+    if isinstance(xprofile, list):
+        k = np.square(np.array(xprofile))
+    else:
+        k = np.square(xprofile.copy())
+
+    NX = xprofile.shape[0]
+
+    nrms = np.maximum(np.sum(k), 1e-10)
+    mn_pos = np.divide(np.sum(np.multiply(k, range(NX))), nrms)
+    xs = np.array([range(NX)] * np.ones([NX, 1])) - np.array([mn_pos] * np.ones([NX, 1]))
+    stdev = np.sqrt(np.divide(np.sum(np.multiply(k, np.square(xs))), nrms))
+    return mn_pos, stdev
+# END spatial_profile_info
+
+
+def spatial_spread(filters, axis=0):
+    """Calculate the spatial spread of a list of filters along one dimension"""
+
+    # Calculate mean of filter
+    k = np.square(filters.copy())
+    if axis > 0:
+        k = np.transpose(k)
+    NX, NF = filters.shape
+
+    nrms = np.maximum(np.sum(k,axis=0), 1e-10)
+    mn_pos = np.divide(np.sum(np.multiply(np.transpose(k), range(NX)), axis=1), nrms)
+    xs = np.array([range(NX)] * np.ones([NF, 1])) - np.transpose(np.array([mn_pos] * np.ones([NX, 1])))
+    stdevs = np.sqrt(np.divide(np.sum(np.multiply(np.transpose(k), np.square(xs)), axis=1), nrms))
+
+    return stdevs
+# END spatial_spread
+
+
+## SIDE/SCAFFOLD NETWORK ANALYSIS to understand solutions
 def side_network_properties(side_ndn, norm_type=0):
+    """Returns measurements of scaffold weights as they are distributed across layer"""
 
     ws = side_network_analyze(side_ndn)
     wside = side_ndn.networks[-1].layers[-1].weights
@@ -513,7 +450,8 @@ def side_network_properties(side_ndn, norm_type=0):
 
 
 def scaffold_similarity(side_ndn, c1, c2, level=None, EI=None):
-    """Assume network is convolutional -- otherwise wont make sense"""
+    """Similarity between scaffold vectors of two cells.
+    Assume network is convolutional -- otherwise wont make sense"""
 
     ws = side_network_analyze(side_ndn)
     NX, NC = ws[0].shape[0], ws[0].shape[2]
@@ -594,7 +532,59 @@ def scaffold_similarity_matrix(side_ndn, level=None, EI=None):
             dmat[c2, c1] = dmat[c1, c2]
     return dmat
 
-def evaluate_ffnetwork(ffnet, end_weighting=None, to_plot=False, thresh_list=None, percent_drop=None):
+
+## SCAFFOLD AND FF-NETWORK ANALYSIS TO REVISE and MANIPULATE MODELS
+def scaffold_density(side_ndn, internal_ws=True):
+    """Plots the total use of all units within the scaffold"""
+
+    num_units = side_ndn.network_list[1]['layer_sizes']
+    num_inh = side_ndn.network_list[1]['num_inh']
+    cfws = side_ndn.network_list[1]['conv_filter_widths']
+    tes = np.maximum(side_ndn.network_list[1]['time_expand'], 1)
+    num_lvls = len(num_units)
+    NU = np.sum(num_units)
+    #print(NU, side_ndn.networks[2].layers[0].weights.shape[0]//NX)
+    # Normalized scaffold structure -- each cell gets same number of votes -- all positive
+    ws = np.reshape(
+        np.divide(side_ndn.networks[2].layers[0].weights, np.sum(side_ndn.networks[2].layers[0].weights,axis=0)),
+        [NX, NU, NCtot])
+    sc_density = np.sum(ws, axis=2)
+    scd_pm = sc_density.copy()
+    #plt.imshow(sc_density, cmap='YlOrRd')
+    for nn in range(len(num_units)):
+        barrier = np.sum(num_units[:(nn+1)])
+        scd_pm[:,range(barrier-num_inh[nn], barrier)] *= -1
+
+    num_rows = 2    
+    subplot_setup(num_rows, num_lvls)
+    
+    for nn in range(num_lvls):
+        rng = range(np.sum(num_units[:(nn)]).astype(int), np.sum(num_units[:(nn+1)]).astype(int))
+        ax=plt.subplot(num_rows, num_lvls, nn+1)
+        plt.imshow(scd_pm[:, rng], cmap='bwr',vmin=-np.max(sc_density), vmax=np.max(sc_density), aspect='auto')
+        plt.plot(np.multiply([1,1], num_units[nn]-num_inh[nn]), [0, NX-1], 'k')
+        ax.set_xticklabels([])
+        plt.title("Lvl %d"%(nn+1))
+        
+        plt.subplot(num_rows, num_lvls, nn+num_lvls+1)
+        plt.plot(np.sum(sc_density[:,rng], axis=0), 'k')
+        maxw = np.max(np.sum(sc_density,axis=0))
+        if internal_ws and nn < (num_lvls-1):
+            int_ws = side_ndn.networks[1].layers[nn+1].weights.copy()
+            int_ws = np.sum(np.sum(
+                np.reshape(
+                    side_ndn.networks[1].layers[nn+1].weights.copy(), 
+                    [cfws[nn+1]*tes[nn+1], num_units[nn], num_units[nn+1]]), 
+                axis=2), axis=0)
+            maxw2 = np.max(int_ws)
+            plt.plot(int_ws/maxw2*maxw, 'g')
+        plt.plot(np.multiply([1,1], num_units[nn]-num_inh[nn]), [0, maxw*1.1], 'r--')
+        plt.autoscale(enable=True, axis='x', tight=True)
+        plt.autoscale(enable=True, axis='y', tight=True)
+    plt.show()
+
+
+def evaluate_ffnetwork_units(ffnet, end_weighting=None, to_plot=False, thresh_list=None, percent_drop=None):
     """Analyze FFnetwork nodes to determine their contribution in the big picture.
     thresh_list and percent_drop apply criteria for each layer (one or other) to suggest units to drop"""
 
@@ -695,13 +685,46 @@ def tunnel_fit(ndn_mod, end_weighting=None, thresh_list=None, percent_drop=None)
     return ndn_copy
 
 
+def ffnet_health(ndn_mod, toplot=True):
+
+    num_nets = len(ndn_mod.networks)
+    whealth = [None]*num_nets
+    bhealth = [None]*num_nets
+    max_layers = 0
+    for nn in range(num_nets):
+        num_layers = len(ndn_mod.networks[nn].layers)
+        whealth[nn] = [None]*num_layers
+        bhealth[nn] = [None]*num_layers
+        if num_layers > max_layers:
+            max_layers = num_layers
+        for ll in range(num_layers):
+            whealth[nn][ll] = np.std(ndn_mod.networks[nn].layers[ll].weights, axis=0)
+            bhealth[nn][ll] = ndn_mod.networks[nn].layers[ll].biases[0, :]
+
+    if toplot:
+        subplot_setup(num_nets * 2, max_layers + 1)
+        for nn in range(num_nets):
+            num_layers = len(ndn_mod.networks[nn].layers)
+            for ll in range(num_layers):
+                plt.subplot(num_nets*2, max_layers, (2*nn)*max_layers+ll+1)
+                _=plt.hist(whealth[nn][ll], 20)
+                plt.title("n%dL%d ws" % (nn, ll))
+                plt.subplot(num_nets*2, max_layers, (2*nn+1)*max_layers+ll+1)
+                _=plt.hist(bhealth[nn][ll], 20)
+                plt.title("n%dL%d bs" % (nn, ll))
+        plt.show()
+
+    return whealth, bhealth
+
+
+
 def prune_ndn(ndn_mod, end_weighting=None, thresh_list=None, percent_drop=None):
     """Remove below-threshold nodes of network. Set thresholds to 0 if don't want to touch layer
         Also should not prune last layer (Robs), but can for multi-networks
         BUT CURRENTLY ONLY WORKS WITH SINGLE-NETWORK NDNs"""
 
     node_eval, remaining_units, _ = \
-        evaluate_ffnetwork(ndn_mod.networks[0], end_weighting=end_weighting,
+        evaluate_ffnetwork_units(ndn_mod.networks[0], end_weighting=end_weighting,
                            thresh_list=thresh_list, percent_drop=percent_drop)
     num_layers = len(node_eval)
 
@@ -864,84 +887,7 @@ def join_ndns(ndn1, ndn2, units2=None):
     return joint_ndn
 
 
-def subplot_setup(num_rows, num_cols, row_height=2):
-    fig, ax = plt.subplots(nrows=num_rows, ncols=num_cols)
-    fig.set_size_inches(16, row_height*num_rows)
-
-
-def matlab_export(filename, variable_list):
-    """Export list of variables to .mat file"""
-
-    import scipy.io as sio
-    if not isinstance(variable_list, list):
-        variable_list = [variable_list]
-
-    matdata = {}
-    for nn in range(len(variable_list)):
-        assert not isinstance(variable_list[nn], list), 'Cant do a list of lists.'
-        if nn < 10:
-            key_name = 'v0' + str(nn)
-        else:
-            key_name = 'v' + str(nn)
-        matdata[key_name] = variable_list[nn]
-
-    sio.savemat(filename, matdata)
-
-
-def binocular_matlab_export(binoc_mod, filename):
-    """Export binocular model (including filter calc) to .mat file"""
-
-    import scipy.io as sio
-    matdata = {}
-    for nn in range(binoc_mod.num_networks):
-        for ll in range(len(binoc_mod.networks[nn].layers)):
-            wstring = 'ws' + str(nn) + str(ll)
-            matdata[wstring] = binoc_mod.networks[nn].layers[ll].weights
-            bstring = 'bs' + str(nn) + str(ll)
-            matdata[bstring] = binoc_mod.networks[nn].layers[ll].biases
-
-    bfilts = binocular_compute_filters(binoc_mod=binoc_mod, to_plot=False)
-    matdata['bfilts'] = bfilts
-    sio.savemat(filename, matdata)
-
-
-def binocular_compute_filters(binoc_mod, to_plot=True):
-
-    # Find binocular layer
-    blayer, bnet = None, None
-    for mm in range(len(binoc_mod.networks)):
-        for nn in range(len(binoc_mod.networks[mm].layers)):
-            if binoc_mod.network_list[mm]['layer_types'][nn] == 'biconv':
-                if nn < len(binoc_mod.networks[mm].layers) - 1:
-                    bnet, blayer = mm, nn + 1
-                elif mm < len(binoc_mod.networks) - 1:
-                    bnet, blayer = mm + 1, 0  # split in hierarchical network
-    assert blayer is not None, 'biconv layer not found'
-
-    NF = binoc_mod.networks[0].layers[blayer].output_dims[0]
-    Nin = binoc_mod.networks[0].layers[blayer].input_dims[0]
-    NX = binoc_mod.networks[0].layers[blayer].filter_dims[1]
-    ks1 = compute_spatiotemporal_filters(binoc_mod)
-    ws = np.reshape(binoc_mod.networks[0].layers[blayer].weights, [NX, Nin, NF])
-    num_lags = binoc_mod.networks[0].layers[0].input_dims[0]
-    if binoc_mod.networks[0].layers[0].filter_dims[1] > 1:  # then not temporal layer
-        filter_dims = [num_lags, binoc_mod.networks[0].layers[0].filter_dims[1]]
-    else:
-        filter_dims = [num_lags, binoc_mod.networks[0].layers[1].filter_dims[1]]
-    nfd = [filter_dims[0], filter_dims[1] + NX]
-    # print(filter_dims, nfd)
-    Bfilts = np.zeros(nfd + [NF, 2])
-    for nn in range(NX):
-        Bfilts[:, np.add(range(filter_dims[1]), nn), :, 0] += np.reshape(
-            np.matmul(ks1, ws[nn, range(Nin // 2), :]), [filter_dims[1], filter_dims[0], NF])
-        Bfilts[:, np.add(range(filter_dims[1]), nn), :, 1] += np.reshape(
-            np.matmul(ks1, ws[nn, range(Nin // 2, Nin), :]), [filter_dims[1], filter_dims[0], NF])
-    bifilts = np.concatenate((Bfilts[:, :, :, 0], Bfilts[:, :, :, 1]), axis=1)
-    if to_plot:
-        plot_filters(filters=bifilts, flipxy=True)
-    return bifilts
-
-
+## SCAFFOLD DISPLAY FUNCTIONS
 def side_ei_analyze(side_ndn):
 
     num_space = int(side_ndn.networks[0].input_dims[1])
@@ -1086,28 +1032,83 @@ def scaffold_plot_cell(side_ndn, cell_n, with_inh=True, nolabels=True, skip_firs
     plt.show()
 
 
-def plot_2dweights( w, input_dims=None, num_inh=0):
-    """w can be one dimension (in which case input_dims is required) or already shaped. """
+## RANDOM UTILITY FUNCTIONS
+def subplot_setup(num_rows, num_cols, row_height=2):
+    fig, ax = plt.subplots(nrows=num_rows, ncols=num_cols)
+    fig.set_size_inches(16, row_height*num_rows)
 
-    if input_dims is not None:
-        w = np.reshape(w, [input_dims[1], input_dims[0]])
+
+def matlab_export(filename, variable_list):
+    """Export list of variables to .mat file"""
+
+    import scipy.io as sio
+    if not isinstance(variable_list, list):
+        variable_list = [variable_list]
+
+    matdata = {}
+    for nn in range(len(variable_list)):
+        assert not isinstance(variable_list[nn], list), 'Cant do a list of lists.'
+        if nn < 10:
+            key_name = 'v0' + str(nn)
+        else:
+            key_name = 'v' + str(nn)
+        matdata[key_name] = variable_list[nn]
+
+    sio.savemat(filename, matdata)
+
+
+def binocular_matlab_export(binoc_mod, filename):
+    """Export binocular model (including filter calc) to .mat file"""
+
+    import scipy.io as sio
+    matdata = {}
+    for nn in range(binoc_mod.num_networks):
+        for ll in range(len(binoc_mod.networks[nn].layers)):
+            wstring = 'ws' + str(nn) + str(ll)
+            matdata[wstring] = binoc_mod.networks[nn].layers[ll].weights
+            bstring = 'bs' + str(nn) + str(ll)
+            matdata[bstring] = binoc_mod.networks[nn].layers[ll].biases
+
+    bfilts = binocular_compute_filters(binoc_mod=binoc_mod, to_plot=False)
+    matdata['bfilts'] = bfilts
+    sio.savemat(filename, matdata)
+
+
+def binocular_compute_filters(binoc_mod, to_plot=True):
+
+    # Find binocular layer
+    blayer, bnet = None, None
+    for mm in range(len(binoc_mod.networks)):
+        for nn in range(len(binoc_mod.networks[mm].layers)):
+            if binoc_mod.network_list[mm]['layer_types'][nn] == 'biconv':
+                if nn < len(binoc_mod.networks[mm].layers) - 1:
+                    bnet, blayer = mm, nn + 1
+                elif mm < len(binoc_mod.networks) - 1:
+                    bnet, blayer = mm + 1, 0  # split in hierarchical network
+    assert blayer is not None, 'biconv layer not found'
+
+    NF = binoc_mod.networks[0].layers[blayer].output_dims[0]
+    Nin = binoc_mod.networks[0].layers[blayer].input_dims[0]
+    NX = binoc_mod.networks[0].layers[blayer].filter_dims[1]
+    ks1 = compute_spatiotemporal_filters(binoc_mod)
+    ws = np.reshape(binoc_mod.networks[0].layers[blayer].weights, [NX, Nin, NF])
+    num_lags = binoc_mod.networks[0].layers[0].input_dims[0]
+    if binoc_mod.networks[0].layers[0].filter_dims[1] > 1:  # then not temporal layer
+        filter_dims = [num_lags, binoc_mod.networks[0].layers[0].filter_dims[1]]
     else:
-        input_dims = [w.shape[1], w.shape[0]]
-
-    num_exc = input_dims[0]-num_inh
-    w = np.divide(w, np.max(np.abs(w)))
-
-    fig, ax = plt.subplots(1)
-
-    if num_inh > 0:
-        w[:, num_exc:] = np.multiply(w[:, num_exc:], -1)
-        plt.imshow(w, interpolation='none', cmap='bwr', vmin=-1, vmax=1)
-    else:
-        plt.imshow(w, aspect='auto', interpolation='none', cmap='Greys', vmin=0, vmax=1)
-    if num_inh > 0:
-        plt.plot(np.multiply([1, 1], num_exc-0.5), [-0.5, input_dims[1]-0.5], 'k')
-    ax.set_yticklabels([])
-    ax.set_xticklabels([])
+        filter_dims = [num_lags, binoc_mod.networks[0].layers[1].filter_dims[1]]
+    nfd = [filter_dims[0], filter_dims[1] + NX]
+    # print(filter_dims, nfd)
+    Bfilts = np.zeros(nfd + [NF, 2])
+    for nn in range(NX):
+        Bfilts[:, np.add(range(filter_dims[1]), nn), :, 0] += np.reshape(
+            np.matmul(ks1, ws[nn, range(Nin // 2), :]), [filter_dims[1], filter_dims[0], NF])
+        Bfilts[:, np.add(range(filter_dims[1]), nn), :, 1] += np.reshape(
+            np.matmul(ks1, ws[nn, range(Nin // 2, Nin), :]), [filter_dims[1], filter_dims[0], NF])
+    bifilts = np.concatenate((Bfilts[:, :, :, 0], Bfilts[:, :, :, 1]), axis=1)
+    if to_plot:
+        plot_filters(filters=bifilts, flipxy=True)
+    return bifilts
 
 
 def entropy(dist):
@@ -1156,38 +1157,6 @@ def best_val_mat(mat, min_or_max=0):
     b0 = int(b0)
     b1 = int(b1)
     return b0, b1
-
-
-def ffnet_health(ndn_mod, toplot=True):
-
-    num_nets = len(ndn_mod.networks)
-    whealth = [None]*num_nets
-    bhealth = [None]*num_nets
-    max_layers = 0
-    for nn in range(num_nets):
-        num_layers = len(ndn_mod.networks[nn].layers)
-        whealth[nn] = [None]*num_layers
-        bhealth[nn] = [None]*num_layers
-        if num_layers > max_layers:
-            max_layers = num_layers
-        for ll in range(num_layers):
-            whealth[nn][ll] = np.std(ndn_mod.networks[nn].layers[ll].weights, axis=0)
-            bhealth[nn][ll] = ndn_mod.networks[nn].layers[ll].biases[0, :]
-
-    if toplot:
-        subplot_setup(num_nets * 2, max_layers + 1)
-        for nn in range(num_nets):
-            num_layers = len(ndn_mod.networks[nn].layers)
-            for ll in range(num_layers):
-                plt.subplot(num_nets*2, max_layers, (2*nn)*max_layers+ll+1)
-                _=plt.hist(whealth[nn][ll], 20)
-                plt.title("n%dL%d ws" % (nn, ll))
-                plt.subplot(num_nets*2, max_layers, (2*nn+1)*max_layers+ll+1)
-                _=plt.hist(bhealth[nn][ll], 20)
-                plt.title("n%dL%d bs" % (nn, ll))
-        plt.show()
-
-    return whealth, bhealth
 
 
 def gabor_sized(dim, angle, phase_select=0):
