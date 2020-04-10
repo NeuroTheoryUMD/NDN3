@@ -662,7 +662,7 @@ def tunnel_fit(ndn_mod, end_weighting=None, thresh_list=None, percent_drop=None)
     assert end_weighting is not None, 'Must supply end_weighting for this to work.'
 
     node_eval, good_nodes, tunnel_units = \
-        evaluate_ffnetwork(ndn_mod.networks[0], end_weighting=end_weighting,
+        evaluate_ffnetwork_units(ndn_mod.networks[0], end_weighting=end_weighting,
                            thresh_list=thresh_list, percent_drop=percent_drop)
     num_layers = len(node_eval)
     ndn_copy = ndn_mod.copy_model()
