@@ -759,11 +759,10 @@ class NDN(object):
  
             # Add fractional batch at end
             if blocks is None:
-                if var_batch_size:
-                    if (data_indxs.shape[0]-num_batches_test*batch_size) > 0:
-                        batch_indxs_test = data_indxs[range(num_batches_test*batch_size, data_indxs.shape[0])]
-                        feed_dict = {self.indices: batch_indxs_test}
-                        unit_cost = np.add(unit_cost, sess.run(self.unit_cost, feed_dict=feed_dict))
+                if var_batch_size and (data_indxs.shape[0]-num_batches_test*batch_size) > self.time_spread:
+                    batch_indxs_test = data_indxs[range(num_batches_test*batch_size, data_indxs.shape[0])]
+                    feed_dict = {self.indices: batch_indxs_test}
+                    unit_cost = np.add(unit_cost, sess.run(self.unit_cost, feed_dict=feed_dict))
                 else:
                     # Zero-out fractional-block data at end that is not used in unit_cost calc
                     for nn in range(len(self.ffnet_out)):
@@ -1558,10 +1557,9 @@ class NDN(object):
             assert self.batch_size is not None, 'Need to assign batch_size to train.'
 
         early_stop_mode = opt_params['early_stop_mode']
-        MAPest = True  # always use MAP (include regularization penalty into early stopping)
-        # make compatible with previous versions that used mode 11'
-        if early_stop_mode > 10:
-            early_stop_mode = 1
+        MAPest = opt_params['MAPest']
+
+        assert early_stop_mode < 10, 'early_stop_mode now must be set 0-3.'
 
         if early_stop_mode > 0:
             prev_costs = np.multiply(np.ones(opt_params['early_stop']), float('NaN'))
@@ -1749,6 +1747,7 @@ class NDN(object):
                         data_filters=data_filters,
                         test_indxs=data_indxs,
                         test_batch_size=opt_params['batch_size'])
+
                 elif self.data_pipe_type == 'iterator':
                     assert not early_stop_mode == 2, 'curently doesnt work for esm 2'
 
@@ -1768,8 +1767,9 @@ class NDN(object):
 
                 mean_now = np.nanmean(prev_costs)
 
-                delta = (mean_before - mean_now) / mean_before
-
+                # Calculate change in relevant condition
+                delta = (mean_before - mean_now) - opt_params['func_tol']
+                #delta = (mean_before - mean_now) / mean_before
                 # to check and refine the condition on chkpting best model
                 # print(epoch, delta, 'delta condition:', delta < 1e-4)
 
@@ -1788,23 +1788,8 @@ class NDN(object):
                             self.checkpoint_model(sess, save_file)
                             chkpted = True
 
-                if (early_stop_mode == 1) or (early_stop_mode == 2):
-                    if epoch > opt_params['early_stop'] and mean_now >= mean_before:  # or equivalently delta <= 0
-                        if not silent:
-                            print('\n*** early stop criteria met...stopping train now...')
-                            print('     ---> number of epochs used: %d,  '
-                                  'end cost: %04f' % (epoch, cost_test))
-                            print('     ---> best epoch: %d,  '
-                                  'best cost: %04f\n' % (best_epoch, best_cost))
-                        # restore saved variables into tf Variables
-                        if output_dir is not None and chkpted and early_stop_mode > 0:
-                            # save_file exists only if chkpted is True
-                            self.saver.restore(sess, save_file)
-                            # delete files before break to clean up space
-                            shutil.rmtree(os.path.join(output_dir, 'bstmods'), ignore_errors=True)
-                        break
-                else:
-                    if mean_now >= mean_before:  # or equivalently delta <= 0
+                if (early_stop_mode > 0):
+                    if epoch > opt_params['early_stop'] and (delta < 0):
                         if not silent:
                             print('\n*** early stop criteria met...stopping train now...')
                             print('     ---> number of epochs used: %d,  '
@@ -1912,16 +1897,16 @@ class NDN(object):
         epochs_training = opt_params['epochs_training']
         epochs_ckpt = opt_params['epochs_ckpt']
         epochs_summary = opt_params['epochs_summary']
+
         # Inherit batch size if relevant
         self.batch_size = opt_params['batch_size']
         if self.data_pipe_type != 'data_as_var':
             assert self.batch_size is not None, 'Need to assign batch_size to train.'
         early_stop_mode = opt_params['early_stop_mode']
-        MAPest = True  # always use MAP (include regularization penalty into early stopping)
-        # make compatible with previous versions that used mode 11'
-        if early_stop_mode > 10:
-            early_stop_mode = 1
 
+        MAPest = opt_params['MAPest']
+
+        assert early_stop_mode < 10, 'early_stop_mode now must be set 0-3.'
         if early_stop_mode > 0:
             prev_costs = np.multiply(np.ones(opt_params['early_stop']), float('NaN'))
 
@@ -2162,7 +2147,10 @@ class NDN(object):
 
                 mean_now = np.nanmean(prev_costs)
 
-                delta = (mean_before - mean_now) / mean_before
+                delta = (mean_before - mean_now) - opt_params['func_tol']
+                #delta = (mean_before - mean_now) / mean_before
+                # to check and refine the condition on chkpting best model
+                # print(epoch, delta, 'delta condition:', delta < 1e-4)
 
                 # to check and refine the condition on chkpting best model
                 # print(epoch, delta, 'delta condition:', delta < 1e-4)
@@ -2182,8 +2170,8 @@ class NDN(object):
                             self.checkpoint_model(sess, save_file)
                             chkpted = True
 
-                if (early_stop_mode == 1) or (early_stop_mode == 2):
-                    if epoch > opt_params['early_stop'] and mean_now >= mean_before:  # or equivalently delta <= 0
+                if (early_stop_mode > 0):
+                    if epoch > opt_params['early_stop'] and (delta < 0):
                         if not silent:
                             print('\n*** early stop criteria met...stopping train now...')
                             print('     ---> number of epochs used: %d,  '
@@ -2197,21 +2185,7 @@ class NDN(object):
                             # delete files before break to clean up space
                             shutil.rmtree(os.path.join(output_dir, 'bstmods'), ignore_errors=True)
                         break
-                else:
-                    if mean_now >= mean_before:  # or equivalently delta <= 0
-                        if not silent:
-                            print('\n*** early stop criteria met...stopping train now...')
-                            print('     ---> number of epochs used: %d,  '
-                                  'end cost: %04f' % (epoch, cost_test))
-                            print('     ---> best epoch: %d,  '
-                                  'best cost: %04f\n' % (best_epoch, best_cost))
-                        # restore saved variables into tf Variables
-                        if output_dir is not None and chkpted and early_stop_mode > 0:
-                            # save_file exists only if chkpted is True
-                            self.saver.restore(sess, save_file)
-                            # delete files before break to clean up space
-                            shutil.rmtree(os.path.join(output_dir, 'bstmods'), ignore_errors=True)
-                        break
+
         return epoch
         #    return epoch
         # END _train_adam_block
@@ -2539,7 +2513,7 @@ class NDN(object):
                 lbfgs algorithm.
                 DEFAULT: 500
             opt_params['func_tol'] (float, optional): see lbfgs method in SciPy
-                optimizer.
+                optimizer. Also can be used for early stopping in adam
                 DEFAULT: 2.22e-09
             opt_params['grad_tol'] (float, optional): see lbfgs method in SciPy
                 optimizer.
@@ -2564,6 +2538,10 @@ class NDN(object):
                 1: chkpt all models and choose the best one from the pool
                 2: chkpt in a smart way, when training session is about to converge
                 DEFAULT: `0`
+            opt_params['MAPest'] (boolean, optional)
+                True: include regularization penalty in judging early_stopping criteria
+                False: only use test_set LL for early stopping
+                DEFAULT: True
             opt_params['early_stop'] (int, optional): if greater than zero,
                 training ends when the cost function evaluated on test_indxs is
                 not lower than the maximum over that many previous checks.
@@ -2613,6 +2591,10 @@ class NDN(object):
                 opt_params['epochs_training'] = 100
             if 'early_stop_mode' not in opt_params:
                 opt_params['early_stop_mode'] = 0
+            if 'MAPest' not in opt_params:
+                opt_params['MAPest'] = True
+            if 'func_tol' not in opt_params:
+                opt_params['func_tol'] = 0
             if 'epochs_summary' not in opt_params:
                 opt_params['epochs_summary'] = None
             if 'early_stop' not in opt_params:
