@@ -759,7 +759,7 @@ class NDN(object):
  
             # Add fractional batch at end
             if blocks is None:
-                if var_batch_size and (data_indxs.shape[0]-num_batches_test*batch_size) > self.time_spread:
+                if var_batch_size and (data_indxs.shape[0]-num_batches_test*batch_size) > time_spread:
                     batch_indxs_test = data_indxs[range(num_batches_test*batch_size, data_indxs.shape[0])]
                     feed_dict = {self.indices: batch_indxs_test}
                     unit_cost = np.add(unit_cost, sess.run(self.unit_cost, feed_dict=feed_dict))
