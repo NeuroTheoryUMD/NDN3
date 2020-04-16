@@ -807,7 +807,7 @@ class NDN(object):
 # END NDN.eval_models
 
     def generate_prediction(self, input_data, data_indxs=None, use_gpu=False,
-                            ffnet_target=-1, layer_target=-1, use_dropout=False):
+                            ffnet_target=-1, layer_target=-1, use_dropout=False, pre_activation=False):
         """Get cost for each output neuron without regularization terms
 
         Args:
@@ -820,6 +820,7 @@ class NDN(object):
             layer_target (int, optional): index into layers of network_list[ffnet_target]
                 that specifies which layer to generate prediction from
             use_dropout (Boolean): whether to use dropout, default is False
+            pre_activation (Boolean): whether to use the output before the activation function
 
         Returns:
             numpy array: pred values from network_list[ffnet_target].layers[layer]
@@ -899,7 +900,22 @@ class NDN(object):
                 elif self.data_pipe_type == 'iterator':
                     feed_dict = {self.iterator_handle: data_indxs}
 
-                pred_tmp = sess.run(self.networks[ffnet_target].layers[layer_target].outputs, feed_dict=feed_dict)
+                outputs = self.networks[ffnet_target].layers[layer_target].outputs
+
+                if pre_activation:
+                    nodes = [n.name for n in self.graph.as_graph_def().node]
+                    name = outputs.name[:outputs.name.find(':')] # removing : gets the operation
+                    id = [id for id in range(len(nodes)) if nodes[id]==name]
+                    opname = nodes[id[0]-1] # the operation before the activation function
+                    # get that operation
+                    op = self.graph.get_operation_by_name(opname)
+                    # get the associated tensor
+                    outputs = op.values()
+                    pred_tmp = sess.run(outputs, feed_dict=feed_dict)
+                    pred_tmp = np.squeeze(pred_tmp)
+                else:
+                    pred_tmp = sess.run(outputs, feed_dict=feed_dict)
+
                 if batch_test == 0:
                     pred = pred_tmp[t0:]
                 else:
