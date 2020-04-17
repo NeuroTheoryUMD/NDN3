@@ -179,7 +179,7 @@ def plot_3dfilters(ndnmod=None, filters=None, dims=None, plot_power=False):
             NK = filters.shape[-1]
             ks = np.reshape(deepcopy(filters), [np.prod(dims), NK])
         else:
-            NK = ks.shape[-1]
+            NK = filters.shape[-1]
             ks = np.reshape(deepcopy(filters), [np.prod(dims), NK])
     else:
         filters = compute_spatiotemporal_filters(ndnmod)
