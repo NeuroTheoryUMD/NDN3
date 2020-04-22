@@ -2432,6 +2432,8 @@ class NDN(object):
             if type(data_filters) is not list:
                 data_filters = [data_filters]
             assert len(data_filters) == len(output_data), 'Number of data filters must match output data.'
+            # Also make sure Robs is zeroed out when data_filters is zero (for Poisson calc)
+            output_data[nn] = np.multiply(output_data[nn], data_filters[nn])
         else:
             if self.filter_data:
                 self.filter_data = False
