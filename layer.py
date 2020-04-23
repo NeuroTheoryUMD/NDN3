@@ -136,7 +136,7 @@ class Layer(object):
             input_dims[0] *= input_dims[3]
         else:
             self.num_lags = 1
-        self.input_dims = input_dims[:3].copy()
+        self.input_dims = deepcopy(input_dims[:3])
 
         if isinstance(output_dims, list):
             while len(output_dims) < 3:
@@ -1340,7 +1340,7 @@ class ConvSepLayer(Layer):
             while len(input_dims) < 3:
                 input_dims.append(1)
         else:
-            input_dims = [1, input_dims, 1]  # assume 1-dimensional (space)
+            input_dims = [input_dims, 1, 1]  # assume 1-dimensional (filter-dim)
 
         if filter_dims is None:
             filter_dims = input_dims
@@ -2383,8 +2383,8 @@ class BiConvLayer(ConvLayer):
 
 
 class ReadoutLayer(Layer):
-    """Implementation of readout layer, with main difference being regularization on neuron-by-neuron basis
-    """
+    """Implementation of readout layer, with main difference from Layer being regularization
+    on neuron-by-neuron basis"""
 
     def __init__(
             self,
@@ -2426,14 +2426,7 @@ class ReadoutLayer(Layer):
                 activations
 
         """
-
-        # Process stim and filter dimensions (potentially both passed in as num_inputs list)
-        if isinstance(input_dims, list):
-            while len(input_dims) < 3:
-                input_dims.append(1)
-        else:
-            input_dims = [1, input_dims, 1]  # assume 1-dimensional (space)
-
+        # Implement layer almost verbatim 
         super(ReadoutLayer, self).__init__(
                 scope=scope,
                 #nlags=nlags,
@@ -2451,9 +2444,10 @@ class ReadoutLayer(Layer):
 
         # Redefine specialized Regularization object to overwrite default
         self.reg = UnitRegularization(
-            input_dims=input_dims,
+            input_dims=self.input_dims,
             num_outputs=self.reg.num_outputs,
             vals=reg_initializer)
+
     # END ReadoutLayer.__init_
 
 
