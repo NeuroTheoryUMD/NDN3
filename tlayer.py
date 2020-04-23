@@ -7,11 +7,11 @@ import numpy as np
 import tensorflow as tf
 from .regularization import Regularization
 from .regularization import SepRegularization
+from .NDNutils import tent_basis_generate
 
 from .layer import Layer
 
 
-# TODO: fix input/output dims so that multiple consecutive TLayers are possible
 class TLayer(Layer):
     """Implementation of a temporal layer, which uses temporal (and causal) convolutions to handle num_lags, without having it
     present in input.
@@ -119,16 +119,15 @@ class TLayer(Layer):
         else:
             self.include_biases = True
 
+        # Add filter-basis dummy (that can be filled in later)
+        self.filter_basis = None
     # END TLayer.__init__
 
     def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
 
-        #assert batch_size is not None, "must pass in batch_size to TLayer"
-        #num_inputs = self.input_dims[1]*self.input_dims[2]
         num_inputs = np.prod(self.input_dims)
         with tf.name_scope(self.scope):
             self._define_layer_variables()
-
             # make shaped input
             shaped_input = tf.reshape(tf.transpose(inputs), [num_inputs, -1, 1, 1])  # avoid using 'batch_size'
             if self.pos_constraint is not None:
@@ -141,10 +140,16 @@ class TLayer(Layer):
             else:
                 w_pn = w_p
 
-            #padding = tf.constant([[0, self.filter_width], [0, 0]])
+            if self.filter_basis is not None:
+                # make constant-tensor if using temporal basis functions 
+                filter_basis = tf.constant( self.filter_basis, name='filter_basis')
+                ks = tf.matmul( filter_basis, w_pn )
+            else:
+                ks = w_pn
+
             padding = tf.constant([[0, self.num_lags], [0, 0]])
-            padded_filt = tf.pad(tf.reverse(w_pn, [0]), padding)  # note the time-reversal
-            #shaped_padded_filt = tf.reshape(padded_filt, [2*self.filter_width, 1, 1, self.num_filters])
+            padded_filt = tf.pad(tf.reverse(ks, [0]), padding)  # note the time-reversal
+
             shaped_padded_filt = tf.reshape(padded_filt, [2*self.num_lags, 1, 1, self.num_filters])
 
             # Temporal convolution
@@ -161,7 +166,45 @@ class TLayer(Layer):
         if self.log:
             tf.summary.histogram('act_pre', _pre)
             tf.summary.histogram('act_post', _post)
-            # END TLayer.build_graph
+    # END TLayer.build_graph
+
+    def init_temporal_basis( self, filter_basis=None, xs=None, num_param=None, doubling_time=None, init_spacing=1 ):
+        """Initializes temporal layer with tent-bases, calling the NDNutils function tent_basis_generate.
+        It will make tent_basis over the range of 'xs', with center points at each value of 'xs'
+        Alternatively (if xs=None), will generate a list with init_space and doubling_time up to
+        the total number of parameters. Must specify xs OR num_param.
+        
+        Note that this basis must extend up to the number of lags initialized. Will adjust number of
+        weights to the number of parameters specified here."""
+ 
+        if filter_basis is not None:
+            self.filter_basis = filter_basis
+        else:
+            self.filter_basis = tent_basis_generate(xs=xs, num_param=num_param, 
+                                        doubling_time=doubling_time, init_spacing=init_spacing)
+        [NTbasis, num_param] = self.filter_basis.shape
+        # Truncate or grow to fit number of lags specified
+
+        if NTbasis > self.num_lags:
+            print("  Temporal layer: must truncate temporal basis from %d to %d."%(NTbasis, self.num_lags))
+            self.filter_basis = self.filter_basis[range(self.num_lags), :]
+        elif NTbasis < self.num_lags:
+            print("  Temporal layer: must expand temporal basis from %d to %d."%(NTbasis, self.num_lags))
+            self.filter_basis = np.concatenate(
+                (self.filter_basis, np.zeros([self.num_lags-NTbasis, num_param], dtype='float32')), 
+                axis=0)
+            self.filter_basis[NTbasis:,-1] = 1  # extend last basis element over the whole range
+        
+        # Adjust number of weights in layer to reflect parameterization with basis
+        if self.filter_dims[0] < num_param:
+            print('Weird. Less parameters in the layer than should be. Error likely.')
+        else:
+            print( "  Temporal layer: updating number of weights in temporal layer from %d to %d."
+                    %(self.filter_dims[0], num_param))
+        self.filter_dims[0] = num_param
+        self.weights = self.weights[range(num_param), :]
+        self.reg.input_dims[0] = num_param
+    # END TLayer.init_temporal_basis
 
 
 class CaTentLayer(Layer):
@@ -170,7 +213,6 @@ class CaTentLayer(Layer):
     Attributes:
         filter_width (int): time spread
         batch_size (int): the batch size is explicitly needed for this computation
-
     """
 
     def __init__(
