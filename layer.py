@@ -100,7 +100,7 @@ class Layer(object):
             ValueError: If `biases_initializer` is not a valid string
 
         """
-
+        
         _allowed_act_funcs = ['lin', 'relu', 'leaky_relu', 'softplus', 'exp',
                               'sigmoid', 'tanh', 'quad', 'elu', 'requ']
 
@@ -2389,7 +2389,6 @@ class ReadoutLayer(Layer):
     def __init__(
             self,
             scope=None,
-            #nlags=None,
             input_dims=None,    # this can be a list up to 3-dimensions
             output_dims=None,
             activation_func='relu',
@@ -2431,7 +2430,7 @@ class ReadoutLayer(Layer):
                 scope=scope,
                 #nlags=nlags,
                 input_dims=input_dims,
-                filter_dims=input_dims,
+                filter_dims=None,
                 output_dims=output_dims,
                 activation_func=activation_func,
                 normalize_weights=normalize_weights,
