@@ -679,27 +679,27 @@ def spikes_to_robs(spks, num_time_pts, dt):
     return robs
 
 
-def tent_basis_generate( xs=None, num_param=None, doubling_time=None, init_spacing=1 ):
+def tent_basis_generate( xs=None, num_params=None, doubling_time=None, init_spacing=1 ):
     """Computes tent-bases over the range of 'xs', with center points at each value of 'xs'
     Alternatively (if xs=None), will generate a list with init_space and doubling_time up to
-    the total number of parameters. Must specify xs OR num_param. 
+    the total number of parameters. Must specify xs OR num_params. 
     
     Defaults:
-        doubling_time = num_param
+        doubling_time = num_params
         init_space = 1"""
 
     # Determine anchor-points
     if xs is not None:
         tbx = np.array(xs,dtype='int32')-xs[0]  # Make sure starts at 0 and of correct format
-        if num_param is not None: 
-            print( 'Warning: will only use xs input -- num_param is ignored.' )
+        if num_params is not None: 
+            print( 'Warning: will only use xs input -- num_params is ignored.' )
     else:
-        assert num_param is not None, 'Need to specify either xs or num_params'
+        assert num_params is not None, 'Need to specify either xs or num_params'
         if doubling_time is None:
-            doubling_time = num_param+1  # never doubles
-        tbx = np.zeros( num_param, dtype='int32' )
+            doubling_time = num_params+1  # never doubles
+        tbx = np.zeros( num_params, dtype='int32' )
         cur_loc, cur_spacing, sp_count = 0, init_spacing, 0
-        for nn in range(num_param):
+        for nn in range(num_params):
             tbx[nn] = cur_loc
             cur_loc += cur_spacing
             sp_count += 1

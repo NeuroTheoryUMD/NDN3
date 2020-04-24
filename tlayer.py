@@ -168,7 +168,7 @@ class TLayer(Layer):
             tf.summary.histogram('act_post', _post)
     # END TLayer.build_graph
 
-    def init_temporal_basis( self, filter_basis=None, xs=None, num_param=None, doubling_time=None, init_spacing=1 ):
+    def init_temporal_basis( self, filter_basis=None, xs=None, num_params=None, doubling_time=None, init_spacing=1 ):
         """Initializes temporal layer with tent-bases, calling the NDNutils function tent_basis_generate.
         It will make tent_basis over the range of 'xs', with center points at each value of 'xs'
         Alternatively (if xs=None), will generate a list with init_space and doubling_time up to
@@ -180,9 +180,9 @@ class TLayer(Layer):
         if filter_basis is not None:
             self.filter_basis = filter_basis
         else:
-            self.filter_basis = tent_basis_generate(xs=xs, num_param=num_param, 
+            self.filter_basis = tent_basis_generate(xs=xs, num_params=num_params, 
                                         doubling_time=doubling_time, init_spacing=init_spacing)
-        [NTbasis, num_param] = self.filter_basis.shape
+        [NTbasis, num_params] = self.filter_basis.shape
         # Truncate or grow to fit number of lags specified
 
         if NTbasis > self.num_lags:
@@ -191,19 +191,19 @@ class TLayer(Layer):
         elif NTbasis < self.num_lags:
             print("  Temporal layer: must expand temporal basis from %d to %d."%(NTbasis, self.num_lags))
             self.filter_basis = np.concatenate(
-                (self.filter_basis, np.zeros([self.num_lags-NTbasis, num_param], dtype='float32')), 
+                (self.filter_basis, np.zeros([self.num_lags-NTbasis, num_params], dtype='float32')), 
                 axis=0)
             self.filter_basis[NTbasis:,-1] = 1  # extend last basis element over the whole range
         
         # Adjust number of weights in layer to reflect parameterization with basis
-        if self.filter_dims[0] < num_param:
+        if self.filter_dims[0] < num_params:
             print('Weird. Less parameters in the layer than should be. Error likely.')
         else:
             print( "  Temporal layer: updating number of weights in temporal layer from %d to %d."
-                    %(self.filter_dims[0], num_param))
-        self.filter_dims[0] = num_param
-        self.weights = self.weights[range(num_param), :]
-        self.reg.input_dims[0] = num_param
+                    %(self.filter_dims[0], num_params))
+        self.filter_dims[0] = num_params
+        self.weights = self.weights[range(num_params), :]
+        self.reg.input_dims[0] = num_params
     # END TLayer.init_temporal_basis
 
 
