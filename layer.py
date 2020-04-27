@@ -594,6 +594,141 @@ class ConvLayer(Layer):
             tf.summary.histogram('act_post', post)
     # END ConvLayer.build_graph
 
+class DiffOfGaussiansLayer(Layer):
+    """Implementation of difference of gaussians layer
+       based on: https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1004927
+    """
+
+    def __init__(
+            self,
+            scope=None,
+            input_dims=None,   # this can be a list up to 3-dimensions
+            num_filters=None,
+            activation_func='relu',
+            normalize_weights=0,
+            weights_initializer='normal',
+            biases_initializer='zeros',
+            reg_initializer=None,
+            num_inh=0,
+            pos_constraint=None,
+            log_activations=False):
+        """Constructor for DiffOfGaussiansLayer class
+
+        Args:
+            scope (str): name scope for variables and operations in layer
+            input_dims (int or list of ints): dimensions of input data
+            num_filters (int): number of independent gaussian filters
+            activation_func (str, optional): pointwise function applied to  
+                output of affine transformation
+                ['relu'] | 'sigmoid' | 'tanh' | 'identity' | 'softplus' | 
+                'elu' | 'quad'
+            normalize_weights (int): 1 to normalize weights, -1 to have maxnorm,  0 otherwise
+                [0] | 1, -1
+            weights_initializer (str, optional): initializer for the weights
+                ['trunc_normal'] | 'normal' | 'zeros'
+            biases_initializer (str, optional): initializer for the biases
+                'trunc_normal' | 'normal' | ['zeros']
+            reg_initializer (dict, optional): see Regularizer docs for info
+            num_inh (int, optional): number of inhibitory units in layer
+            pos_constraint (None, valued): True to constrain layer weights to
+                be positive
+            log_activations (bool, optional): True to use tf.summary on layer 
+                activations
+
+        Raises:
+            ValueError: If `pos_constraint` is `True`
+            
+        """
+
+        # Process stim and filter dimensions
+        # (potentially both passed in as num_inputs list)
+        if isinstance(input_dims, list):
+            while len(input_dims) < 3:
+                input_dims.append(1)
+        else:
+            # assume 1-dimensional (space)
+            input_dims = [1, input_dims, 1]
+
+        # If output dimensions already established, just strip out num_filters
+        if isinstance(num_filters, list):
+            num_filters = num_filters[0]
+        output_dims = [num_filters]
+        super(DiffOfGaussiansLayer, self).__init__(
+                scope=scope,
+                input_dims=8,
+                output_dims= output_dims,   
+                activation_func=activation_func,
+                normalize_weights=normalize_weights,
+                weights_initializer=weights_initializer,
+                biases_initializer=biases_initializer,
+                reg_initializer=reg_initializer,
+                num_inh=num_inh,
+                pos_constraint=pos_constraint,
+                log_activations=log_activations)
+
+        # Changes in properties from Layer - note this is implicitly multi-dimensional
+        self.output_dims = output_dims
+        self.input_dims = input_dims
+    # END DiffOfGaussiansLayer.__init__
+
+    def __get_gaussian(self, weights, num_filters, X, Y, weights_index_offset=0):
+        index_baseline = 4 * weights_index_offset
+        alpha = tf.reshape(tf.gather(weights, 0 + index_baseline), [1, 1, num_filters])
+        gamma = tf.reshape(tf.gather(weights, 1 + index_baseline), [1, 1, num_filters])
+        ux = tf.reshape(tf.gather(weights, 2 + index_baseline), [1, 1, num_filters])
+        uy = tf.reshape(tf.gather(weights, 3 + index_baseline), [1, 1, num_filters])
+
+        gm_np = (alpha/(gamma ** 2)) * tf.exp(-((X - ux) ** 2 + (Y - uy) ** 2) / (2*(gamma ** 2)))
+        return gm_np
+
+    def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
+
+        assert params_dict is not None, 'Incorrect ConvLayer initialization.'
+        # Unfold siLayer-specific parameters for building graph
+
+        with tf.name_scope(self.scope):
+            self._define_layer_variables()
+
+            # Reshape of inputs (4-D):
+            input_dims = [-1, self.input_dims[2], self.input_dims[1],
+                          self.input_dims[0]]
+            # this is reverse-order from Matlab:
+            # [space-2, space-1, lags, and num_examples]
+            shaped_input = tf.reshape(inputs, input_dims)
+            shaped_input = tf.expand_dims(shaped_input, 4)
+
+            # Prepare index meshgrid
+            W = np.array(range(self.input_dims[1]))
+            H = np.array(range(self.input_dims[2]))
+            X, Y = np.meshgrid(W, H)
+            X = tf.constant(np.expand_dims(X, 2).astype(np.float32))
+            Y = tf.constant(np.expand_dims(Y, 2).astype(np.float32))
+
+            num_filters = self.output_dims[0]
+            weights = tf.Variable(tf.reshape(self.weights_var, [8, num_filters]))
+            
+            gm_np = self.__get_gaussian(weights, num_filters, X, Y, 0) - self.__get_gaussian(weights, num_filters, X, Y, 1)
+            gm = tf.expand_dims(gm_np, 2) # W, H, 1, num_filters
+
+            gaussed = tf.multiply(shaped_input, gm)
+
+            _pre = tf.reduce_sum(gaussed, axis=[1, 2, 3])
+            pre = tf.add(_pre, self.biases_var)
+
+            if self.ei_mask_var is None:
+                post = self._apply_act_func(pre)
+            else:
+                post = tf.multiply(self._apply_act_func(pre), self.ei_mask_var)
+
+            post_drpd = self._apply_dropout(post, use_dropout=use_dropout,
+                                            noise_shape=[1, 1, 1, self.num_filters])
+            self.outputs = post_drpd
+
+        if self.log:
+            tf.summary.histogram('act_pre', pre)
+            tf.summary.histogram('act_post', post)
+    # END ConvLayer.build_graph
+
 
 # class ClusterLayer(Layer):
 #     """Implementation of 'Cluster' layer: combined multiple subunits into separate streams for fitting
