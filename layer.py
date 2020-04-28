@@ -625,7 +625,7 @@ class DiffOfGaussiansLayer(Layer):
             normalize_weights (int): 1 to normalize weights, -1 to have maxnorm,  0 otherwise
                 [0] | 1, -1
             weights_initializer (str, optional): initializer for the weights
-                ['trunc_normal'] | 'normal' | 'zeros'
+                'random' | 'zeros'
             biases_initializer (str, optional): initializer for the biases
                 'trunc_normal' | 'normal' | ['zeros']
             reg_initializer (dict, optional): see Regularizer docs for info
@@ -653,13 +653,18 @@ class DiffOfGaussiansLayer(Layer):
         if isinstance(num_filters, list):
             num_filters = num_filters[0]
         output_dims = [num_filters]
+
+        # Only random (with input-size bounds) or zero initializations are available for parameters this layer
+        if not weights_initializer in ['zeros', 'random']:
+            raise ValueError('Invalid weights_initializer ''%s''' %weights_initializer)
+
         super(DiffOfGaussiansLayer, self).__init__(
                 scope=scope,
-                input_dims=8,
+                input_dims=8,   # Hack to initialize size of weights to the number of this layer's parameters
                 output_dims= output_dims,   
                 activation_func=activation_func,
                 normalize_weights=normalize_weights,
-                weights_initializer=weights_initializer,
+                weights_initializer='zeros',
                 biases_initializer=biases_initializer,
                 reg_initializer=reg_initializer,
                 num_inh=num_inh,
@@ -669,7 +674,19 @@ class DiffOfGaussiansLayer(Layer):
         # Changes in properties from Layer - note this is implicitly multi-dimensional
         self.output_dims = output_dims
         self.input_dims = input_dims
+
+        if weights_initializer == 'random':
+            self.weights = np.array(self.__get_random_w(num_filters) + self.__get_random_w(num_filters), np.float32)
+
     # END DiffOfGaussiansLayer.__init__
+
+    def __get_random_w(self, num_filters):
+            return [
+                [np.random.sample()*20-10 for x in range(num_filters)], # alpha
+                [np.random.sample()*max(self.input_dims[1], self.input_dims[2]) for x in range(num_filters)], # sigma
+                [np.random.sample()*self.input_dims[1] for x in range(num_filters)], # ux
+                [np.random.sample()*self.input_dims[2] for x in range(num_filters)], # uy
+            ]
 
     def __get_gaussian(self, weights, num_filters, X, Y, weights_index_offset=0):
         index_baseline = 4 * weights_index_offset
