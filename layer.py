@@ -176,7 +176,7 @@ class Layer(object):
             self.log = True
         else:
             self.log = False
-
+        
         # Set up layer regularization
         self.reg = Regularization(
             input_dims=filter_dims,
@@ -367,6 +367,16 @@ class Layer(object):
         self.weights = w_pn
         self.biases = sess.run(self.biases_var)
     # END Layer.write_layer_params
+
+    def copy_layer_params(self, origin_layer):
+        """Copy layer parameters over to new layer (which is self in this case). 
+        Only should be called by NDN.copy_network_params()."""
+
+        self.weights = deepcopy(origin_layer.weights)
+        self.biases = deepcopy(origin_layer.biases)
+        self.weights = deepcopy(origin_layer.weights)
+        self.reg = origin_layer.reg.reg_copy()
+        self.normalize_weights = deepcopy(origin_layer.normalize_weights)
 
     def define_regularization_loss(self):
         """Wrapper function for building regularization portion of graph"""

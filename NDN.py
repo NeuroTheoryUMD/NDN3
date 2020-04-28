@@ -969,16 +969,17 @@ class NDN(object):
 
         # Copy all the parameters
         for nn in range(self.num_networks):
-            for ll in range(self.networks[nn].num_layers):
-                target.networks[nn].layers[ll].weights = \
-                    self.networks[nn].layers[ll ].weights.copy()
-                target.networks[nn].layers[ll].biases = \
-                    self.networks[nn].layers[ll].biases.copy()
-                target.networks[nn].layers[ll].reg = \
-                    self.networks[nn].layers[ll].reg.reg_copy()
-                target.networks[nn].layers[ll].normalize_weights = \
-                    self.networks[nn].layers[ll].normalize_weights
-            target.networks[nn].input_masks = deepcopy(self.networks[nn].input_masks)
+            target.networks[nn].copy_ffnetwork_params( self.networks[nn] )
+            #for ll in range(self.networks[nn].num_layers):
+            #    target.networks[nn].layers[ll].weights = \
+            #        self.networks[nn].layers[ll ].weights.copy()
+            #    target.networks[nn].layers[ll].biases = \
+            #        self.networks[nn].layers[ll].biases.copy()
+            #    target.networks[nn].layers[ll].reg = \
+            #        self.networks[nn].layers[ll].reg.reg_copy()
+            #    target.networks[nn].layers[ll].normalize_weights = \
+            #        self.networks[nn].layers[ll].normalize_weights
+            #target.networks[nn].input_masks = deepcopy(self.networks[nn].input_masks)
         return target
 
     def matlab_export(self, filename):
@@ -2475,7 +2476,8 @@ class NDN(object):
             if np.sum(self.network_list[nn]['time_expand']) > 0:
                 for ll in range(len(self.networks[nn].layers)):
                     if (self.network_list[nn]['time_expand'][ll] > 0) and \
-                            (self.network_list[nn]['layer_types'][ll] != 'temporal'):
+                            ((self.network_list[nn]['layer_types'][ll] != 'temporal') or \
+                                (self.network_list[nn]['layer_types'][ll] != 'sp_temporal')):
                         can_we = False
         return can_we
 
