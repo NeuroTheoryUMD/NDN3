@@ -674,11 +674,20 @@ class DiffOfGaussiansLayer(Layer):
     def __get_gaussian(self, weights, num_filters, X, Y, weights_index_offset=0):
         index_baseline = 4 * weights_index_offset
         alpha = tf.reshape(tf.gather(weights, 0 + index_baseline), [1, 1, num_filters])
-        gamma = tf.reshape(tf.gather(weights, 1 + index_baseline), [1, 1, num_filters])
+        sigma = tf.reshape(tf.gather(weights, 1 + index_baseline), [1, 1, num_filters])
         ux = tf.reshape(tf.gather(weights, 2 + index_baseline), [1, 1, num_filters])
         uy = tf.reshape(tf.gather(weights, 3 + index_baseline), [1, 1, num_filters])
 
-        gm_np = (alpha/(gamma ** 2)) * tf.exp(-((X - ux) ** 2 + (Y - uy) ** 2) / (2*(gamma ** 2)))
+        # Centers (ux, uy) within image:
+        ux = tf.clip_by_value(ux, 0, self.input_dims[1])
+        uy = tf.clip_by_value(uy, 0, self.input_dims[2])
+
+        # signma is positive and smaller than the size of the image 
+        sigma = tf.clip_by_value(sigma, np.finfo(float).eps, max(self.input_dims[1], self.input_dims[2]))
+        # alpha is always positive
+        alpha = tf.maximum(alpha, np.finfo(float).eps)
+
+        gm_np = (alpha/(sigma ** 2)) * tf.exp(-((X - ux) ** 2 + (Y - uy) ** 2) / (2*(sigma ** 2)))
         return gm_np
 
     def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
