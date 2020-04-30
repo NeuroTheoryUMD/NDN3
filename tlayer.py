@@ -107,9 +107,6 @@ class TLayer(Layer):
         self.dilation = dilation
         self.output_dims = output_dims
 
-        # ei_mask not useful at the moment
-        self.ei_mask_var = None
-
         self.reg = Regularization(
             input_dims=[num_lags, 1, 1],
             num_outputs=num_filters,
@@ -129,8 +126,9 @@ class TLayer(Layer):
         num_inputs = np.prod(self.input_dims)
         with tf.name_scope(self.scope):
             self._define_layer_variables()
+            
             # make shaped input
-            shaped_input = tf.reshape(tf.transpose(inputs), [num_inputs, -1, 1, 1])  # avoid using 'batch_size'
+            shaped_input = tf.reshape(tf.transpose(inputs), [num_inputs, -1, 1, 1]) 
             if self.pos_constraint is not None:
                 w_p = tf.maximum(self.weights_var, 0.0)
             else:
@@ -162,7 +160,13 @@ class TLayer(Layer):
                 _post = self._apply_act_func(tf.add(_pre, self.biases_var))
             else:
                 _post = self._apply_act_func(_pre)
-            self.outputs = tf.reshape(tf.transpose(_post, [1, 0, 2, 3]), (-1, np.prod(self.output_dims)))
+
+            if self.ei_mask_var is None:
+                _post2 = _post
+            else:
+                _post2 = tf.multiply(_post, self.ei_mask_var)
+
+            self.outputs = tf.reshape(tf.transpose(_post2, [1, 0, 2, 3]), (-1, np.prod(self.output_dims)))
 
         if self.log:
             tf.summary.histogram('act_pre', _pre)
@@ -198,9 +202,9 @@ class TLayer(Layer):
         
         # Adjust number of weights in layer to reflect parameterization with basis
         if self.filter_dims[0] < num_params:
-            print('Weird. Less parameters in the layer than should be. Error likely.')
+            print("Weird. Less parameters in the layer than should be. Error likely.")
         else:
-            print( "  Temporal layer: updating number of weights in temporal layer from %d to %d."
+            print("  Temporal layer: updating number of weights in temporal layer from %d to %d."
                     %(self.filter_dims[0], num_params))
         self.filter_dims[0] = num_params
         self.weights = self.weights[range(num_params), :]
@@ -211,12 +215,12 @@ class TLayer(Layer):
         """Copy layer parameters over to new layer (which is self in this case) -- overloaded for TLayer
         to also copy temporal_basis if relevant."""
 
-        #super(TLayer, self).copy_layer_params(origin_layer)
-        self.weights = deepcopy(origin_layer.weights)
-        self.biases = deepcopy(origin_layer.biases)
-        self.weights = deepcopy(origin_layer.weights)
-        self.reg = origin_layer.reg.reg_copy()
-        self.normalize_weights = deepcopy(origin_layer.normalize_weights)
+        super(TLayer, self).copy_layer_params(origin_layer)
+        #self.weights = deepcopy(origin_layer.weights)
+        #self.biases = deepcopy(origin_layer.biases)
+        #self.weights = deepcopy(origin_layer.weights)
+        #self.reg = origin_layer.reg.reg_copy()
+        #self.normalize_weights = deepcopy(origin_layer.normalize_weights)
         # new addition
         self.filter_basis = deepcopy(origin_layer.filter_basis)
     # END TLayer.copy_layer_params
@@ -278,7 +282,6 @@ class TLayerSpecific(TLayer):
                 activations
 
         Raises:
-            
 
         """
         # number of filters must match number of input dims
@@ -306,12 +309,17 @@ class TLayerSpecific(TLayer):
     def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
 
         num_inputs = np.prod(self.input_dims)
+
         with tf.name_scope(self.scope):
+
             self._define_layer_variables()
+
             # make shaped input
+            #shaped_input = tf.reshape(tf.transpose(inputs), [num_inputs, -1, 1, 1])  # from TLayer
+            #shaped_input = tf.reshape(tf.transpose(inputs), [1, -1, 1, num_inputs])  # weird alternative
+            shaped_input = tf.expand_dims( tf.expand_dims(inputs, axis=0), axis=2)
             
-            #shaped_input = tf.reshape(tf.transpose(inputs), [num_inputs, -1, 1, 1])  
-            shaped_input = tf.reshape(inputs, [1, -1, 1, num_inputs]) 
+            #shaped_input = tf.reshape(inputs, [1, -1, 1, num_inputs]) 
             if self.pos_constraint is not None:
                 w_p = tf.maximum(self.weights_var, 0.0)
             else:
@@ -332,23 +340,18 @@ class TLayerSpecific(TLayer):
             # ks is currently num_lags x NC
             padding = tf.constant([[0, self.num_lags], [0, 0]])
             padded_filt = tf.pad(tf.reverse(ks, [0]), padding)  # note the time-reversal
-            print(padded_filt)
-            a = tf.tile(tf.expand_dims(padded_filt, axis=2), [1, 1, num_inputs])
-            print('a:', a)
-            b = tf.multiply(a,tf.eye( num_inputs)),
-            print('b:', b)
-            c = tf.reduce_sum(b, axis=0 )
-            print(c)
+
+            tile_dims = tf.constant([1, 1, num_inputs], tf.int32)
+            tile_filt = tf.expand_dims(tf.eye(num_inputs), axis=0)
             # Generates 4-d weight tensor: [num_lags, 1, num_inputs, num_inputs]) 
             #   this treats num_lags x 1 as spatial filter (to be convolved)
             shaped_padded_filt = tf.expand_dims(
                                     tf.multiply(
                                         #tf.repeat(padded_filt, num_inputs, axis=2), # only in tf-2.1
-                                        tf.tile(tf.expand_dims(padded_filt, axis=2), [1, 1, num_inputs]),
-                                        tf.eye( num_inputs)),
+                                        tf.tile(tf.expand_dims(padded_filt, axis=2), tile_dims),
+                                        tile_filt),
                                     axis=1)
-            #shaped_padded_filt = tf.reshape(padded_filt, [2*self.num_lags, 1, 1, self.num_filters])
-            print(shaped_padded_filt)
+
             # Temporal convolution
             strides = [1, 1, 1, 1]
             dilations = [1, self.dilation, 1, 1]
@@ -358,7 +361,14 @@ class TLayerSpecific(TLayer):
                 _post = self._apply_act_func(tf.add(_pre, self.biases_var))
             else:
                 _post = self._apply_act_func(_pre)
-            self.outputs = tf.reshape(tf.transpose(_post, [1, 0, 2, 3]), (-1, np.prod(self.output_dims)))
+
+            if self.ei_mask_var is None:
+                _post2 = _post
+            else:
+                _post2 = tf.multiply(_post, self.ei_mask_var)
+
+            #self.outputs = tf.reshape(tf.transpose(_post, [1, 0, 2, 3]), (-1, np.prod(self.output_dims)))
+            self.outputs = tf.squeeze(_post2, [0, 2])
 
         if self.log:
             tf.summary.histogram('act_pre', _pre)
