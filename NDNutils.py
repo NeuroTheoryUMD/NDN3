@@ -679,7 +679,7 @@ def spikes_to_robs(spks, num_time_pts, dt):
     return robs
 
 
-def tent_basis_generate( xs=None, num_params=None, doubling_time=None, init_spacing=1 ):
+def tent_basis_generate( xs=None, num_params=None, doubling_time=None, init_spacing=1, first_lag=0 ):
     """Computes tent-bases over the range of 'xs', with center points at each value of 'xs'
     Alternatively (if xs=None), will generate a list with init_space and doubling_time up to
     the total number of parameters. Must specify xs OR num_params. 
@@ -698,7 +698,7 @@ def tent_basis_generate( xs=None, num_params=None, doubling_time=None, init_spac
         if doubling_time is None:
             doubling_time = num_params+1  # never doubles
         tbx = np.zeros( num_params, dtype='int32' )
-        cur_loc, cur_spacing, sp_count = 0, init_spacing, 0
+        cur_loc, cur_spacing, sp_count = first_lag, init_spacing, 0
         for nn in range(num_params):
             tbx[nn] = cur_loc
             cur_loc += cur_spacing
@@ -715,6 +715,9 @@ def tent_basis_generate( xs=None, num_params=None, doubling_time=None, init_spac
         if nn > 0:
             dx = tbx[nn]-tbx[nn-1]
             tent_basis[range(tbx[nn-1], tbx[nn]+1), nn] = np.array(list(range(dx+1)))/dx
+        elif tbx[0] > 0:  # option to have function go to zero at beginning
+            dx = tbx[0]
+            tent_basis[range(tbx[nn]+1), nn] = np.array(list(range(dx+1)))/dx
         if nn < NB-1:
             dx = tbx[nn+1]-tbx[nn]
             tent_basis[range(tbx[nn], tbx[nn+1]+1), nn] = 1-np.array(list(range(dx+1)))/dx
