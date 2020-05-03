@@ -374,7 +374,7 @@ class NDN(object):
                 data_out = tf.slice(self.data_out_batch[nn], [time_spread, 0], [-1, -1])
                 pred = tf.slice(pred_tmp, [time_spread, 0], [-1, -1])  # [self.batch_size-self.time_spread, -1])
                 # effective_batch_size is self.batch_size - self.time_spread
-            nt = tf.cast(tf.shape(pred)[0], tf.float32) - time_spread
+            nt = tf.cast(tf.shape(pred)[0], tf.float32)  # already sliced 
 
             # define cost function
             if self.noise_dist == 'gaussian':
@@ -970,16 +970,6 @@ class NDN(object):
         # Copy all the parameters
         for nn in range(self.num_networks):
             target.networks[nn].copy_ffnetwork_params( self.networks[nn] )
-            #for ll in range(self.networks[nn].num_layers):
-            #    target.networks[nn].layers[ll].weights = \
-            #        self.networks[nn].layers[ll ].weights.copy()
-            #    target.networks[nn].layers[ll].biases = \
-            #        self.networks[nn].layers[ll].biases.copy()
-            #    target.networks[nn].layers[ll].reg = \
-            #        self.networks[nn].layers[ll].reg.reg_copy()
-            #    target.networks[nn].layers[ll].normalize_weights = \
-            #        self.networks[nn].layers[ll].normalize_weights
-            #target.networks[nn].input_masks = deepcopy(self.networks[nn].input_masks)
         return target
 
     def matlab_export(self, filename):
