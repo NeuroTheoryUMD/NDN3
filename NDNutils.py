@@ -690,7 +690,7 @@ def tent_basis_generate( xs=None, num_params=None, doubling_time=None, init_spac
 
     # Determine anchor-points
     if xs is not None:
-        tbx = np.array(xs,dtype='int32')-xs[0]  # Make sure starts at 0 and of correct format
+        tbx = np.array(xs,dtype='int32')
         if num_params is not None: 
             print( 'Warning: will only use xs input -- num_params is ignored.' )
     else:
