@@ -49,8 +49,11 @@ def compute_spatiotemporal_filters(ndn_mod, ffnet=None):
     num_lags = ndn_mod.networks[ffnet].layers[0].num_lags
     if num_lags == 1 and ndn_mod.networks[ffnet].layers[0].filter_dims[0] > 1:
         num_lags = ndn_mod.networks[ffnet].layers[0].filter_dims[0]
-    if (np.prod(ndn_mod.networks[ffnet].layers[0].filter_dims[1:]) == 1) and \
-            (ndn_mod.network_list[ffnet]['layer_types'][0] != 'sep'):  # then likely temporal basis
+    elif not num_lags == ndn_mod.networks[ffnet].layers[0].filter_dims[0]:
+        num_lags = ndn_mod.networks[ffnet].layers[0].filter_dims[0]
+    if ((np.prod(ndn_mod.networks[ffnet].layers[0].filter_dims[1:]) == 1) and \
+            (ndn_mod.network_list[ffnet]['layer_types'][0] != 'sep')) or \
+            ndn_mod.network_list[ffnet]['layer_types'][0]=='temporal':
         ks_flat = tbasis_recover_filters(ndn_mod, ffnet=ffnet)
         if len(ndn_mod.networks[ffnet].layers) > 1:
             sp_dims = ndn_mod.networks[ffnet].layers[1].filter_dims[1:]
