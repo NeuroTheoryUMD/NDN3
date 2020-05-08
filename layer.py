@@ -731,7 +731,7 @@ class DiffOfGaussiansLayer(Layer):
             Y = tf.constant(np.expand_dims(Y, 2).astype(np.float32))
 
             num_filters = self.output_dims[0]
-            weights = tf.Variable(tf.reshape(self.weights_var, [8, num_filters]))
+            weights = tf.reshape(self.weights_var, [8, num_filters])
             
             gm_np = self.__get_gaussian(weights, num_filters, X, Y, 0) - self.__get_gaussian(weights, num_filters, X, Y, 1)
             gm = tf.expand_dims(gm_np, 2) # W, H, 1, num_filters
@@ -749,11 +749,11 @@ class DiffOfGaussiansLayer(Layer):
             post_drpd = self._apply_dropout(post, use_dropout=use_dropout,
                                             noise_shape=[1, 1, 1, self.num_filters])
             self.outputs = post_drpd
-
+            
         if self.log:
             tf.summary.histogram('act_pre', pre)
             tf.summary.histogram('act_post', post)
-    # END ConvLayer.build_graph
+    # END DiffOfGaussiansLayer.build_graph
 
 
 # class ClusterLayer(Layer):
