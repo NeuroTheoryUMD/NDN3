@@ -508,7 +508,7 @@ class FFNetwork(object):
                         conv_filter_size[2] = network_params['conv_filter_widths'][nn]
 
                 self.layers.append(BiConvLayer(
-                    scope='conv_layer_%i' % nn,
+                    scope='biconv_layer_%i' % nn,
                     input_dims=layer_sizes[nn],
                     num_filters=layer_sizes[nn+1],
                     filter_dims=conv_filter_size,
