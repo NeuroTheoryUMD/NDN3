@@ -49,20 +49,15 @@ def compute_spatiotemporal_filters(ndn_mod, ffnet=None):
     num_lags = ndn_mod.networks[ffnet].layers[0].num_lags
     if num_lags == 1 and ndn_mod.networks[ffnet].layers[0].filter_dims[0] > 1:  # if num_lags was set as dim0
         num_lags = ndn_mod.networks[ffnet].layers[0].filter_dims[0]
-#    elif not num_lags == ndn_mod.networks[ffnet].layers[0].filter_dims[0]:  # new
-#        num_lags = ndn_mod.networks[ffnet].layers[0].filter_dims[0]
     if (np.prod(ndn_mod.networks[ffnet].layers[0].filter_dims[1:]) == 1) and \
         (ndn_mod.network_list[ffnet]['layer_types'][0] != 'sep'):  # then likely temporal basis
-#    if ((np.prod(ndn_mod.networks[ffnet].layers[0].filter_dims[1:]) == 1) and \
-#            (ndn_mod.network_list[ffnet]['layer_types'][0] != 'sep')) or \
-#            ndn_mod.network_list[ffnet]['layer_types'][0]=='temporal':  # new
         ks_flat = tbasis_recover_filters(ndn_mod, ffnet=ffnet)
         if len(ndn_mod.networks[ffnet].layers) > 1:
             sp_dims = ndn_mod.networks[ffnet].layers[1].filter_dims[1:]
-            other_dims = ndn_mod.networks[ffnet].layers[1].filter_dims[0] // ndn_mod.networks[0].layers[0].num_filters
+            other_dims = ndn_mod.networks[ffnet].layers[1].filter_dims[0] // ndn_mod.networks[ffnet].layers[0].num_filters
         else:
             sp_dims = ndn_mod.networks[ffnet+1].layers[0].filter_dims[1:]
-            other_dims = ndn_mod.networks[ffnet+1].layers[0].filter_dims[0] // ndn_mod.networks[0].layers[0].num_filters
+            other_dims = ndn_mod.networks[ffnet+1].layers[0].filter_dims[0] // ndn_mod.networks[ffnet].layers[0].num_filters
     else:
         # Check if separable layer
         n0 = ndn_mod.networks[ffnet].layers[0].input_dims[0] 
