@@ -82,10 +82,10 @@ def compute_spatiotemporal_filters(ndn_mod, ffnet=None):
     num_filters = ks_flat.shape[-1]
 
     # Reshape filters with other_dims tucked into first spatial dimension (on outside)
-    if sp_dims[1] == 1:
+    if (sp_dims[1] == 1) or (sp_dims[0] == 1):
         ks = np.reshape(np.transpose(
-            np.reshape(ks_flat, [sp_dims[0], other_dims, num_lags, num_filters]), [1, 0, 2, 3]),
-            [sp_dims[0]*other_dims, num_lags, num_filters])
+            np.reshape(ks_flat, [np.prod(sp_dims), other_dims, num_lags, num_filters]), [1, 0, 2, 3]),
+            [np.prod(sp_dims)*other_dims, num_lags, num_filters])
     else:
         ks = np.reshape(np.transpose(
             np.reshape(ks_flat, [sp_dims[1], sp_dims[0], other_dims, num_lags, num_filters]), [2, 0, 1, 3, 4]),
