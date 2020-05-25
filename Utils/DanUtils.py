@@ -311,7 +311,7 @@ def side_network_analyze(side_ndn, cell_to_plot=None, plot_aspect='auto'):
     for ll in range(num_layers):
         #wtemp = wside[range(ll, len(wside), num_layers), :]
         wtemp = wside[:, range(fcount, fcount+filter_nums[ll]), :]
-        ws.append(wtemp.copy())
+        ws.append(deepcopy(wtemp))
         fcount += filter_nums[ll]
 
         if cell_to_plot is not None:
@@ -368,7 +368,7 @@ def spatial_profile_info(xprofile):
     if isinstance(xprofile, list):
         k = np.square(np.array(xprofile))
     else:
-        k = np.square(xprofile.copy())
+        k = np.square(deepcopy(xprofile))
 
     NX = xprofile.shape[0]
 
@@ -384,7 +384,7 @@ def spatial_spread(filters, axis=0):
     """Calculate the spatial spread of a list of filters along one dimension"""
 
     # Calculate mean of filter
-    k = np.square(filters.copy())
+    k = np.square(deepcopy(filters))
     if axis > 0:
         k = np.transpose(k)
     NX, NF = filters.shape
@@ -558,7 +558,7 @@ def scaffold_density(side_ndn, internal_ws=True):
         np.divide(side_ndn.networks[2].layers[0].weights, np.sum(side_ndn.networks[2].layers[0].weights,axis=0)),
         [NX, NU, NCtot])
     sc_density = np.sum(ws, axis=2)
-    scd_pm = sc_density.copy()
+    scd_pm = deepcopy(sc_density)
     #plt.imshow(sc_density, cmap='YlOrRd')
     for nn in range(len(num_units)):
         barrier = np.sum(num_units[:(nn+1)])
@@ -579,10 +579,10 @@ def scaffold_density(side_ndn, internal_ws=True):
         plt.plot(np.sum(sc_density[:,rng], axis=0), 'k')
         maxw = np.max(np.sum(sc_density,axis=0))
         if internal_ws and nn < (num_lvls-1):
-            int_ws = side_ndn.networks[1].layers[nn+1].weights.copy()
+            int_ws = deepcopy(side_ndn.networks[1].layers[nn+1].weights)
             int_ws = np.sum(np.sum(
                 np.reshape(
-                    side_ndn.networks[1].layers[nn+1].weights.copy(), 
+                    deepcopy(side_ndn.networks[1].layers[nn+1].weights), 
                     [cfws[nn+1]*tes[nn+1], num_units[nn], num_units[nn+1]]), 
                 axis=2), axis=0)
             maxw2 = np.max(int_ws)
@@ -609,12 +609,12 @@ def evaluate_ffnetwork_units(ffnet, end_weighting=None, to_plot=False, thresh_li
     prev_ws = np.divide(prev_ws, np.mean(prev_ws))
 
     node_eval = [[]]*num_layers
-    node_eval[-1] = prev_ws.copy()
+    node_eval[-1] = deepcopy(prev_ws)
     for nn in range(num_layers-1):
-        ws = ffnet.layers[num_layers-1-nn].weights.copy()
+        ws = deepcopy(ffnet.layers[num_layers-1-nn].weights)
         next_ws = np.matmul(np.square(ws), prev_ws)
-        node_eval[num_layers-nn-2] = np.divide(next_ws.copy(), np.mean(next_ws))
-        prev_ws = next_ws.copy()
+        node_eval[num_layers-nn-2] = np.divide(deepcopy(next_ws), np.mean(next_ws))
+        prev_ws = deepcopy(next_ws)
 
     # Determine units to drop (if any)
     units_to_drop = [[]]*num_layers
@@ -920,7 +920,7 @@ def side_ei_analyze(side_ndn):
 
     fcount = 0
     for ll in range(num_layers):
-        ws = wside[:, range(fcount, fcount+num_units[ll]), :].copy()
+        ws = deepcopy(wside[:, range(fcount, fcount+num_units[ll]), :])
         fcount += num_units[ll]
         if num_inh[ll] == 0:
             ews = np.maximum(ws, 0)
@@ -961,7 +961,7 @@ def scaffold_nonconv_plot( side_ndn, with_inh=True, nolabels=True, skip_first_le
     plt.rcParams['lines.linewidth'] = linewidth
     plt.rcParams['axes.linewidth'] = linewidth
     for ll in range(num_layers):
-        ws = np.transpose(np.divide(scaff_ws[range(fcount, fcount+num_units[ll]), :].copy(), cell_nrms))
+        ws = np.transpose(np.divide(deepcopy(scaff_ws[range(fcount, fcount+num_units[ll]), :]), cell_nrms))
 
         fcount += num_units[ll]
         if (num_inh[ll] > 0) and with_inh:
@@ -1014,7 +1014,7 @@ def scaffold_plot_cell(side_ndn, cell_n, with_inh=True, nolabels=True, skip_firs
     plt.rcParams['lines.linewidth'] = linewidth
     plt.rcParams['axes.linewidth'] = linewidth
     for ll in range(num_layers):
-        ws = np.divide(wside[:, range(fcount, fcount+num_units[ll]), cell_n].copy(), cell_nrms[cell_n])
+        ws = np.divide(deepcopy(wside[:, range(fcount, fcount+num_units[ll]), cell_n]), cell_nrms[cell_n])
 
         fcount += num_units[ll]
         if (num_inh[ll] > 0) and with_inh:

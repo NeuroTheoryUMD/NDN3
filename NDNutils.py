@@ -264,7 +264,7 @@ def concatenate_input_dims(parent_input_size, added_input_size, network_type='no
 
     if network_type != 'sampler':
         cat_dims = expand_input_dims_to_3d(added_input_size)
-        
+
         if parent_input_size is not None:
             # Sum full vector along the first dimension ("filter" dimension)
             assert parent_input_size[1] == cat_dims[1], \
@@ -282,7 +282,7 @@ def concatenate_input_dims(parent_input_size, added_input_size, network_type='no
 
 def shift_mat(m, sh, dim, zpad=True):
     """Modern version of shift_mat_zpad, good up to 4-dimensions, with z-pad as option"""
-    shm = np.roll(m.copy(), sh, dim)
+    shm = np.roll(deepcopy(m), sh, dim)
     if zpad:
         assert m.ndim < 5, 'Cannot do more than 4 dimensions.'
         L = m.shape[dim]
@@ -348,7 +348,7 @@ def shift_mat_zpad(x, shift, dim=0):
         xcopy = np.zeros([len(x), 1])
         xcopy[:, 0] = x
     else:
-        xcopy = x.copy()
+        xcopy = deepcopy(x)
         oneDarray = False
     sz = list(np.shape(xcopy))
 
@@ -434,7 +434,7 @@ def create_time_embedding(stim, pdims, up_fac=1, tent_spacing=1):
         print('Stimulus dimension mismatch')
         raise ValueError
 
-    modstim = stim.copy()
+    modstim = deepcopy(stim)
     # Up-sample stimulus if required
     if up_fac > 1:
         # Repeats the stimulus along the time dimension
@@ -499,7 +499,7 @@ def create_NL_embedding(stim, bounds):
         else:
             tmp[b] = 1
         tmp = np.maximum(tmp, 0)
-        NLstim[:, :, nn] = tmp.copy()
+        NLstim[:, :, nn] = deepcopy(tmp)
     print("Generated NLstim: %d x %d x %d" % (NT, NF, NNL))
     return np.reshape(NLstim, [NT, NF*NNL])
 
