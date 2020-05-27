@@ -10,6 +10,22 @@ from copy import deepcopy
 from sklearn.preprocessing import normalize as sk_normalize
 
 
+## GENERAL PLOTTING HACKS ##
+def plot_norm( k, ksize = [36,20], cmap='gray', max_val=None):
+    if max_val is None:
+        max_val = np.max(abs(k))
+    if len(k.shape) > 1:  # then already reshaped
+        kr = k
+    else:
+        kr = np.reshape(k, ksize)
+    plt.imshow(kr, cmap=cmap, vmin=-max_val, vmax=max_val)
+
+
+def subplot_setup(num_rows, num_cols, row_height=2):
+    fig, ax = plt.subplots(nrows=num_rows, ncols=num_cols)
+    fig.set_size_inches(16, row_height*num_rows)
+
+
 ## EXTRACT FILTER FROM NDN -- Various  functions
 def tbasis_recover_filters(ndn_mod, ffnet=None):
 
@@ -726,7 +742,6 @@ def ffnet_health(ndn_mod, toplot=True):
     return whealth, bhealth
 
 
-
 def prune_ndn(ndn_mod, end_weighting=None, thresh_list=None, percent_drop=None):
     """Remove below-threshold nodes of network. Set thresholds to 0 if don't want to touch layer
         Also should not prune last layer (Robs), but can for multi-networks
@@ -1042,11 +1057,6 @@ def scaffold_plot_cell(side_ndn, cell_n, with_inh=True, nolabels=True, skip_firs
 
 
 ## RANDOM UTILITY FUNCTIONS
-def subplot_setup(num_rows, num_cols, row_height=2):
-    fig, ax = plt.subplots(nrows=num_rows, ncols=num_cols)
-    fig.set_size_inches(16, row_height*num_rows)
-
-
 def matlab_export(filename, variable_list):
     """Export list of variables to .mat file"""
 
@@ -1064,60 +1074,6 @@ def matlab_export(filename, variable_list):
         matdata[key_name] = variable_list[nn]
 
     sio.savemat(filename, matdata)
-
-
-def binocular_matlab_export(binoc_mod, filename):
-    """Export binocular model (including filter calc) to .mat file"""
-
-    import scipy.io as sio
-    matdata = {}
-    for nn in range(binoc_mod.num_networks):
-        for ll in range(len(binoc_mod.networks[nn].layers)):
-            wstring = 'ws' + str(nn) + str(ll)
-            matdata[wstring] = binoc_mod.networks[nn].layers[ll].weights
-            bstring = 'bs' + str(nn) + str(ll)
-            matdata[bstring] = binoc_mod.networks[nn].layers[ll].biases
-
-    bfilts = binocular_compute_filters(binoc_mod=binoc_mod, to_plot=False)
-    matdata['bfilts'] = bfilts
-    sio.savemat(filename, matdata)
-
-
-def binocular_compute_filters(binoc_mod, to_plot=True):
-
-    # Find binocular layer
-    blayer, bnet = None, None
-    for mm in range(len(binoc_mod.networks)):
-        for nn in range(len(binoc_mod.networks[mm].layers)):
-            if binoc_mod.network_list[mm]['layer_types'][nn] == 'biconv':
-                if nn < len(binoc_mod.networks[mm].layers) - 1:
-                    bnet, blayer = mm, nn + 1
-                elif mm < len(binoc_mod.networks) - 1:
-                    bnet, blayer = mm + 1, 0  # split in hierarchical network
-    assert blayer is not None, 'biconv layer not found'
-
-    NF = binoc_mod.networks[0].layers[blayer].output_dims[0]
-    Nin = binoc_mod.networks[0].layers[blayer].input_dims[0]
-    NX = binoc_mod.networks[0].layers[blayer].filter_dims[1]
-    ks1 = compute_spatiotemporal_filters(binoc_mod)
-    ws = np.reshape(binoc_mod.networks[0].layers[blayer].weights, [NX, Nin, NF])
-    num_lags = binoc_mod.networks[0].layers[0].input_dims[0]
-    if binoc_mod.networks[0].layers[0].filter_dims[1] > 1:  # then not temporal layer
-        filter_dims = [num_lags, binoc_mod.networks[0].layers[0].filter_dims[1]]
-    else:
-        filter_dims = [num_lags, binoc_mod.networks[0].layers[1].filter_dims[1]]
-    nfd = [filter_dims[0], filter_dims[1] + NX]
-    # print(filter_dims, nfd)
-    Bfilts = np.zeros(nfd + [NF, 2])
-    for nn in range(NX):
-        Bfilts[:, np.add(range(filter_dims[1]), nn), :, 0] += np.reshape(
-            np.matmul(ks1, ws[nn, range(Nin // 2), :]), [filter_dims[1], filter_dims[0], NF])
-        Bfilts[:, np.add(range(filter_dims[1]), nn), :, 1] += np.reshape(
-            np.matmul(ks1, ws[nn, range(Nin // 2, Nin), :]), [filter_dims[1], filter_dims[0], NF])
-    bifilts = np.concatenate((Bfilts[:, :, :, 0], Bfilts[:, :, :, 1]), axis=1)
-    if to_plot:
-        plot_filters(filters=bifilts, flipxy=True)
-    return bifilts
 
 
 def entropy(dist):
