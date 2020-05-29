@@ -637,7 +637,10 @@ class DiffOfGaussiansLayer(Layer):
 
         Raises:
             ValueError: If `pos_constraint` is `True`
-            
+        
+        Notes:
+            Weights are `[alpha, sigma, ux, uy]` twice (for first and second gaussian).
+            Each one (e.g. alpha, ...) is a vector of shape (num_filters)
         """
 
         # Process stim and filter dimensions
