@@ -422,11 +422,14 @@ def create_time_embedding(stim, pdims, up_fac=1, tent_spacing=1):
     # If there are two spatial dims, fold them into one
     if len(sz) > 2:
         stim = np.reshape(stim, (sz[0], np.prod(sz[1:])))
+        print('Flattening stimulus to produce design matrix.')
+    elif len(sz) == 1:
+        stim = np.expand_dims(stim, axis=1)
+    sz = list(np.shape(stim))
 
     # No support for more than two spatial dimensions
     if len(sz) > 3:
-        print('More than two spatial dimensions not supported, but creating' +
-              'xmatrix anyways...')
+        print('More than two spatial dimensions not supported, but creating xmatrix anyways...')
 
     # Check that the size of stim matches with the specified stim_params
     # structure

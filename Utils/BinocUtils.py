@@ -17,6 +17,7 @@ def plot_tfilters( ndnmod, kts = None, to_plot=True  ):
     """Can pass in weights to relevant layer in first argument, as well as NDN model.
     Will use default tkerns variable, but this can also be passed in as kts argument."""
 
+    assert kts is not None, 'Must include tkerns.'
     ntk = kts.shape[1]
     if type(ndnmod) is np.ndarray:  # then passing in filters and need more information
         ws = deepcopy(ndnmod)     
@@ -72,7 +73,171 @@ def compute_binocular_filters(binoc_mod, to_plot=True):
     bifilts = np.concatenate((Bfilts[:, :, :, 0], Bfilts[:, :, :, 1]), axis=1)
     if to_plot:
         DU.plot_filters(filters=bifilts, flipxy=True)
-    return bifilts
+    else:
+        return bifilts
+
+
+def compute_binocular_tfilters(binoc_mod, kts=None, to_plot=True):
+
+    assert kts is not None, 'Must include tkerns.'
+    BFs = compute_binocular_filters( binoc_mod, to_plot=False)
+    Bks = np.transpose(np.tensordot(kts, BFs, axes=[1, 0]), (1,0,2))
+
+    if to_plot:
+        DU.plot_filters(filters=Bks)
+    else:
+        return Bks
+
+
+###################### DISPARITY PROCESSING ######################
+def disparity_matrix( dispt, corrt ):
+
+    # last two colums will be uncorrelated (-1005) and blank (-1009)
+
+    dlist = np.unique(dispt)[2:]  # this will exclude -1009 (blank) and -1005 (uncor)
+    ND = len(dlist)
+
+    dmat = np.zeros([dispt.shape[0], 2*ND+2])
+    dmat[np.where(dispt == -1009)[0], -1] = 1
+    dmat[np.where(dispt == -1005)[0], -2] = 1
+    for dd in range(len(dlist)):
+        dmat[np.where((dispt == dlist[dd]) & (corrt > 0))[0], dd] = 1
+        dmat[np.where((dispt == dlist[dd]) & (corrt < 0))[0], ND+dd] = 1
+
+    return dmat
+
+
+def disparity_tuning( Einfo, r, used_inds=None, num_dlags=8, fr1or3=3, to_plot=False ):
+
+    if used_inds is None:
+        used_inds = range(len(r))
+
+    dmat = disparity_matrix( Einfo['dispt'], Einfo['corrt'])
+    ND = (dmat.shape[1]-2) // 2
+    
+    # Weight all by their frequency of occurance
+    
+    if (fr1or3 == 3) or (fr1or3 == 1):
+        frs_valid = Einfo['frs'] == fr1or3
+    else:
+        frs_valid = Einfo['frs'] > 0
+    
+    to_use = frs_valid[used_inds]
+    dmatN = dmat / np.mean(dmat[used_inds[to_use],:], axis=0) * np.mean(dmat[used_inds[to_use],:])
+    Xmat = NDNutils.create_time_embedding( dmatN[:, range(ND*2)], [num_dlags, 2*ND, 1])[used_inds, :]
+    # uncorrelated response
+    Umat = NDNutils.create_time_embedding( dmatN[:, [-2]], [num_dlags, 1, 1])[used_inds, :]
+
+    if len(r) > len(used_inds):
+        resp = r[used_inds] 
+    else: 
+        resp = r
+                          
+    Nspks = np.sum(resp[to_use, :], axis=0)
+    Dsta = np.reshape( Xmat[to_use, :].T@resp[to_use], [2*ND, num_dlags] ) / Nspks
+    Usta = (Umat[to_use, :].T@resp[to_use])[:,0] / Nspks
+    
+    # Rudimentary analysis
+    best_lag = np.argmax(np.max(Dsta[range(ND),:], axis=0))
+    Dtun = np.reshape(Dsta[:, best_lag], [2, ND]).T
+    uncor_resp = Usta[best_lag]
+    
+    Dinfo = {'Dsta':Dsta, 'Dtun': Dtun, 'uncor_resp': uncor_resp, 'best_lag': best_lag, 'uncor_sta': Usta}
+                    
+    if to_plot:
+        DU.subplot_setup(1,2)
+        plt.subplot(1,2,1)
+        DU.plot_norm(Dsta.T-uncor_resp, cmap='bwr')
+        plt.plot([ND-0.5,ND-0.5], [-0.5, num_dlags-0.5], 'k')
+        plt.plot([-0.5, 2*ND-0.5], [best_lag, best_lag], 'k--')
+        plt.subplot(1,2,2)
+        plt.plot(Dtun)
+        plt.plot(-Dtun[:,1]+2*uncor_resp,'m--')
+
+        plt.plot([0, ND-1], [uncor_resp, uncor_resp], 'k')
+        plt.xlim([0, ND-1])
+        plt.show()
+        
+    return Dinfo
+
+
+def disparity_predictions( Einfo, resp, indxs=None, num_dlags=8, fr1or3=None, spiking=True, opt_params=None ):
+    """Calculates a prediction of the disparity (and timing) signals that can be inferred from the response
+    by the disparity input alone. This puts a lower bound on how much disparity is driving the response, although
+    practically speaking will generate the same disparity tuning curves.
+    
+    Usage: Dpred, Tpred = disparity_predictions( Einfo, resp, indxs, num_dlags=8, spiking=True, opt_params=None )
+
+    Inputs: Indices gives data range to fit to.
+    Outputs: Dpred and Tpred will be length of entire experiment -- not just indxs
+    """
+
+    # Process disparity into disparty and timing design matrix
+    dmat = disparity_matrix( Einfo['dispt'], Einfo['corrt'] )
+    ND2 = dmat.shape[1]
+    if indxs is None:
+        indxs = range(dmat.shape[0])
+
+    # everything but blank
+    Xd = NDNutils.create_time_embedding( dmat[:, :-1], [num_dlags, ND2-1, 1])[indxs,:]
+    # blank
+    Xb = NDNutils.create_time_embedding( dmat[:, -1], [num_dlags, 1, 1])[indxs,:] 
+    # timing
+    switches = np.expand_dims(np.concatenate( (np.sum(abs(np.diff(dmat, axis=0)),axis=1), [0]), axis=0), axis=1)
+    Xs = NDNutils.create_time_embedding( switches, [num_dlags, 1, 1])[indxs,:]
+
+    tpar = NDNutils.ffnetwork_params( 
+        xstim_n=[0], input_dims=[1,1,1, num_dlags], layer_sizes=[1], verbose=False,
+        layer_types=['normal'], act_funcs=['lin'], reg_list={'d2t':[None],'l1':[None ]})
+    bpar = deepcopy(tpar)
+    bpar['xstim_n'] = [1]
+    dpar = NDNutils.ffnetwork_params( 
+        xstim_n=[2], input_dims=[1,ND2-1,1, num_dlags], layer_sizes=[1], verbose=False,
+        layer_types=['normal'], act_funcs=['lin'], reg_list={'d2xt':[None],'l1':[None]})
+    comb_parT = NDNutils.ffnetwork_params( 
+        xstim_n=None, ffnet_n=[0,1], layer_sizes=[1], verbose=False,
+        layer_types=['normal'], act_funcs=['softplus'])
+    comb_par = deepcopy(comb_parT)
+    comb_par['ffnet_n'] = [0,1,2]
+
+    if spiking:
+        nd = 'poisson'
+    else:
+        nd = 'gaussian'
+        
+    Tglm = NDN.NDN( [tpar, bpar, comb_parT], noise_dist=nd, tf_seed = 5)
+    DTglm = NDN.NDN( [tpar, bpar, dpar, comb_par], noise_dist=nd, tf_seed = 5)
+    v2fT = Tglm.fit_variables( layers_to_skip=[2], fit_biases=False)
+    v2fT[2][0]['fit_biases'] = True
+    v2f = DTglm.fit_variables( layers_to_skip=[3], fit_biases=False)
+    v2f[3][0]['fit_biases'] = True
+
+    if (fr1or3 == 3) or (fr1or3 == 1):
+        frs_valid = Einfo['frs'] == fr1or3
+    else:
+        frs_valid = Einfo['frs'] > 0
+    to_use = frs_valid[indxs]
+
+    if len(resp) > len(indxs):
+        r = deepcopy(resp[indxs])
+    else:
+        r = deepcopy(resp)
+    
+    _= Tglm.train(
+        input_data=[Xs[to_use,:], Xb[to_use,:]], output_data=r[to_use], learning_alg='lbfgs',# fit_variables=v2fT,
+        opt_params=opt_params)
+    _= DTglm.train(
+        input_data=[Xs[to_use,:], Xb[to_use,:], Xd[to_use,:]], output_data=r[to_use], # fit_variables=v2f, 
+        learning_alg='lbfgs', opt_params=opt_params)
+    #p1 = Tglm.eval_models(input_data=Xs[indxs,:], output_data=r)[0]
+    #p2 = DTglm.eval_models(input_data=[Xs[indxs,:], Xd[indxs,:]], output_data=r)[0]
+    #print( "Model performances: %0.4f  -> %0.4f"%(p1, p2) )
+    
+    # make predictions of each
+    predT = Tglm.generate_prediction( input_data=[Xs, Xb] )
+    predD = DTglm.generate_prediction( input_data=[Xs, Xb, Xd] )
+    
+    return predD, predT
 
 
 ########### FILE MANAGEMENT FOR BINOCULAR MODELS / DATA ###########
@@ -117,7 +282,7 @@ def binocular_data_import( datadir, expt_num ):
 
     # Read all data into memory
     filename = 'B2Sexpt'+ str(expt_num) + '.mat'
-    Bmatdat = sio.loadmat(filename)
+    Bmatdat = sio.loadmat(datadir+filename)
     stim = NDNutils.shift_mat_zpad(Bmatdat['stim'][:,stim_trim], time_shift, 0)
 
     #NX = int(stim.shape[1]) // 2
@@ -148,7 +313,7 @@ def binocular_data_import( datadir, expt_num ):
     NC = Robs.shape[1]
     NT = len(used_inds)
 
-    dispt_raw = Bmatdat['all_disps'][:,0]
+    dispt_raw = NDNutils.shift_mat_zpad( Bmatdat['all_disps'][:,0], time_shift, 0 ) # time shift to keep consistent
     # this has the actual disparity values, which are at the resolution of single bars, and centered around the neurons
     # disparity (sometime shifted to drive neurons well)
     # Sometimes a slightly disparity is used, so it helps to round the values at some resolution
@@ -156,9 +321,10 @@ def binocular_data_import( datadir, expt_num ):
     disp_list = np.unique(dispt)
     # where it is -1009 this corresponds to a blank frame
     # where it is -1005 this corresponds to uncorrelated images between the eyes
-    corrt = Bmatdat['all_corrs'][:,0]
-    frs = Bmatdat['all_frs'][:,0]
-    rep_inds = np.add(Bmatdat['rep_inds'], -1)  
+    corrt = NDNutils.shift_mat_zpad( Bmatdat['all_corrs'][:,0], time_shift, 0 )
+    frs = NDNutils.shift_mat_zpad( Bmatdat['all_frs'][:,0], time_shift, 0 )
+
+    rep_inds = np.add(Bmatdat['rep_inds'][0], -1)  
 
     print( "Expt %d: %d SUs, %d total units, %d out of %d time points used."%(expt_num, numSUs, NC, NT, NTtot))
     #print(len(disp_list), 'different disparities:', disp_list)
@@ -186,15 +352,16 @@ def binocular_data_import_cell( datadir, expt_num, cell_num ):
         cell_num: cell number to analyze
     
     Outputs:
-        stim: formatted as NT x 72 (stimuli in each eye are cropped to NX=36). It will be time-shifted by 1 to 
-                eliminate 0-latency stim
-        Robs: response concatenating all SUs and MUs, NT x NC. NSU is saved as part of Eadd_info
-        used_inds_cell: indices overwhich data is valid for that particular cell
+        stim_all: formatted as NT x 72 (stimuli in each eye are cropped to NX=36). It will be time-shifted by 1 
+                  to eliminate 0-latency stim. Note this is all stim in experiment, val_inds from used_inds...
+        Robs: response concatenating all SUs and MUs, NT x NC. NSU and full Robs is saved as part of Eadd_info.
+              This is already selected by used_inds_cell, so no need for further reduction
+        used_inds_cell: indices overwhich data is valid for that particular cell. Should be applied to stim only
         UiC, XiC: cross-validation indices for that cell, based on used_inds_cell
         Eadd_info: dictionary containing all other relevant info for experiment
     """
 
-    stim, Robs_all, DFs, used_inds, Einfo = binocular_data_import( datadir, expt_num )
+    stim_all, Robs_all, DFs, used_inds, Einfo = binocular_data_import( datadir, expt_num )
 
     cellspecificdata = np.where(DFs[:, cell_num-1] > 0)[0]
     used_cell = np.intersect1d(used_inds, cellspecificdata)
@@ -212,8 +379,9 @@ def binocular_data_import_cell( datadir, expt_num, cell_num ):
     Einfo['used_inds_all'] = used_inds
     Einfo['XiA_cell'] = XVi1
     Einfo['XiB_cell'] = XVi2
+    Einfo['Robs'] = Robs # all cells, full indexing
 
     print( "Adjusted for cell %d: %d time points"%(cell_num, NT))
 
-    return stim, Robs, used_cell, Ui, Xi, Einfo
+    return stim_all, Robs, used_cell, Ui, Xi, Einfo
 
