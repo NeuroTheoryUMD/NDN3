@@ -88,6 +88,66 @@ def compute_binocular_tfilters(binoc_mod, kts=None, to_plot=True):
     else:
         return Bks
 
+#### PERFORMANCE MEASURES
+def explainable_variance_binocular( Einfo, resp, indxs, cell_num=None ):
+    """This is the explainable variance calculation, and is binocular-specific because of the data structures
+    in Einfo only. Note: will return total variance (and a warning) if repeats not present in the dataset."""
+
+    if Einfo['rep_inds'] is None:
+        print( 'No repeats in this dataset.')
+        return np.var(resp[indxs])
+    if cell_num is None:
+        print( 'Warning: cell-specific repeats not given: using cc=0.')
+        cell_num = 1
+    else:
+        if cell_num == 0:
+            print('Warning: must use matlab-style cell numbers (starting at 1)')
+            
+    rep1inds = np.intersect1d(indxs, Einfo['rep_inds'][cell_num-1][:,0])
+    rep2inds = np.intersect1d(indxs, Einfo['rep_inds'][cell_num-1][:,1])
+    allreps = np.concatenate((rep1inds, rep2inds), axis=0)
+
+    totvar = np.var(resp[allreps])
+    explvar = np.mean(np.multiply(resp[rep1inds]-np.mean(resp[allreps]), resp[rep2inds]-np.mean(resp[allreps]))) 
+    
+    return explvar, totvar 
+
+
+def predictive_power_binocular( Robs, pred, indxs=None, expl_var=None, Einfo=None, cell_num=1, suppress_warnings=False ):
+    """Use Einfo to modify indices used to rep_inds (and can fill in expl_var) -- otherwise not used for anything
+    Robs sometimes is already indexed nby indxs, so check that it needs to be indexed. Will be assuming that
+    pred is full range -- otherwise no need to pass indx in."""
+    
+    if indxs is None:
+        indxs = np.arange(len(Robs))
+    mod_indxs = deepcopy(indxs)
+    if Einfo is not None:
+        if Einfo['rep_inds'] is not None:
+            rep1inds = np.intersect1d(indxs, Einfo['rep_inds'][cell_num-1][:,0])
+            rep2inds = np.intersect1d(indxs, Einfo['rep_inds'][cell_num-1][:,1])
+            allreps = np.concatenate((rep1inds, rep2inds), axis=0)
+            mod_indxs = np.intersect1d( mod_indxs, allreps )
+        if expl_var is None:
+            expl_var,_ = explainable_variance_binocular( Einfo, Robs, indxs, cell_num )
+            
+    
+    r1 = deepcopy(Robs[mod_indxs])
+    r2 = deepcopy(pred[mod_indxs])
+
+    # Now assuming that r (Robs) is length of indxs, and pred is full res
+    if expl_var is None:
+        # this means repeat info not passed in, so just use total variance
+        if ~suppress_warnings:
+            print( '  Using total variance for normalization')
+        expl_var = np.var(Robs)
+    
+    explained_power = np.var(r1)-np.mean(np.square(r1-r2))
+    
+    # calculate other way
+    #crosscorr = np.mean(np.multiply(r1-np.mean(r1), r2-np.mean(r2)))
+    #print( (crosscorr**2/expl_var/np.var(r2)) )
+    return explained_power/expl_var
+
 
 ###################### DISPARITY PROCESSING ######################
 def disparity_matrix( dispt, corrt ):
@@ -128,10 +188,10 @@ def disparity_tuning( Einfo, r, used_inds=None, num_dlags=8, fr1or3=3, to_plot=F
     # uncorrelated response
     Umat = NDNutils.create_time_embedding( dmatN[:, [-2]], [num_dlags, 1, 1])[used_inds, :]
 
-    if len(r) > len(used_inds):
-        resp = r[used_inds] 
-    else: 
-        resp = r
+    #if len(r) > len(used_inds):
+    resp = deepcopy(r[used_inds] )
+    #else: 
+    #    resp = r
                           
     Nspks = np.sum(resp[to_use, :], axis=0)
     Dsta = np.reshape( Xmat[to_use, :].T@resp[to_use], [2*ND, num_dlags] ) / Nspks
@@ -218,13 +278,14 @@ def disparity_predictions( Einfo, resp, indxs=None, num_dlags=8, fr1or3=None, sp
         frs_valid = Einfo['frs'] > 0
     to_use = frs_valid[indxs]
 
-    if len(resp) > len(indxs):
-        r = deepcopy(resp[indxs])
-    else:
-        r = deepcopy(resp)
+    r = deepcopy(resp[indxs])
+    #if len(resp) > len(indxs):
+    #    r = deepcopy(resp[indxs])
+    #else:
+    #    r = deepcopy(resp)
     
     _= Tglm.train(
-        input_data=[Xs[to_use,:], Xb[to_use,:]], output_data=r[to_use], learning_alg='lbfgs',# fit_variables=v2fT,
+        input_data=[Xs[to_use,:], Xb[to_use,:]], output_data=resp[to_use], learning_alg='lbfgs',# fit_variables=v2fT,
         opt_params=opt_params)
     _= DTglm.train(
         input_data=[Xs[to_use,:], Xb[to_use,:], Xd[to_use,:]], output_data=r[to_use], # fit_variables=v2f, 
@@ -324,7 +385,12 @@ def binocular_data_import( datadir, expt_num ):
     corrt = NDNutils.shift_mat_zpad( Bmatdat['all_corrs'][:,0], time_shift, 0 )
     frs = NDNutils.shift_mat_zpad( Bmatdat['all_frs'][:,0], time_shift, 0 )
 
-    rep_inds = np.add(Bmatdat['rep_inds'][0], -1)  
+    if Bmatdat['rep_inds'] is None:
+        rep_inds = [None]*numSUs
+    else:
+        rep_inds = []
+        for cc in range(numSUs):
+            rep_inds.append( np.add(Bmatdat['rep_inds'][0][cc], -1) ) 
 
     print( "Expt %d: %d SUs, %d total units, %d out of %d time points used."%(expt_num, numSUs, NC, NT, NTtot))
     #print(len(disp_list), 'different disparities:', disp_list)
@@ -359,6 +425,11 @@ def binocular_data_import_cell( datadir, expt_num, cell_num ):
         used_inds_cell: indices overwhich data is valid for that particular cell. Should be applied to stim only
         UiC, XiC: cross-validation indices for that cell, based on used_inds_cell
         Eadd_info: dictionary containing all other relevant info for experiment
+
+    if the full experiment is NT long, stim and Robs are also NT long, 
+        stim[used_inds_cell,:] and Robs[used_inds_cell] are the valid data for that cell, and UiC and XiC are
+        the proper train and test indices of used_inds_cell to access, i.e. 
+    _model.train( input_data=stim[used_inds_cell,:], output_data=Robs[used_inds_cell], train_indxs=UiC, ...)
     """
 
     stim_all, Robs_all, DFs, used_inds, Einfo = binocular_data_import( datadir, expt_num )
@@ -373,7 +444,7 @@ def binocular_data_import_cell( datadir, expt_num, cell_num ):
     XVi2 = np.where(Einfo['XiB_analog'][used_cell] > 0)[0]
     Xi = np.where(Xi_analog[used_cell] > 0)[0]
 
-    Robs = np.expand_dims(Robs_all[used_cell, cell_num-1], 1)
+    Robs = np.expand_dims(Robs_all[:, cell_num-1], 1)
 
     # Add some things to Einfo
     Einfo['used_inds_all'] = used_inds
