@@ -239,12 +239,12 @@ def disparity_predictions( Einfo, resp, indxs=None, num_dlags=8, fr1or3=None, sp
         indxs = range(dmat.shape[0])
 
     # everything but blank
-    Xd = NDNutils.create_time_embedding( dmat[:, :-1], [num_dlags, ND2-1, 1])[indxs,:]
+    Xd = NDNutils.create_time_embedding( dmat[:, :-1], [num_dlags, ND2-1, 1])
     # blank
-    Xb = NDNutils.create_time_embedding( dmat[:, -1], [num_dlags, 1, 1])[indxs,:] 
+    Xb = NDNutils.create_time_embedding( dmat[:, -1], [num_dlags, 1, 1])
     # timing
     switches = np.expand_dims(np.concatenate( (np.sum(abs(np.diff(dmat, axis=0)),axis=1), [0]), axis=0), axis=1)
-    Xs = NDNutils.create_time_embedding( switches, [num_dlags, 1, 1])[indxs,:]
+    Xs = NDNutils.create_time_embedding( switches, [num_dlags, 1, 1])
 
     tpar = NDNutils.ffnetwork_params( 
         xstim_n=[0], input_dims=[1,1,1, num_dlags], layer_sizes=[1], verbose=False,
@@ -273,23 +273,25 @@ def disparity_predictions( Einfo, resp, indxs=None, num_dlags=8, fr1or3=None, sp
     v2f[3][0]['fit_biases'] = True
 
     if (fr1or3 == 3) or (fr1or3 == 1):
-        frs_valid = Einfo['frs'] == fr1or3
+        mod_indxs = np.intersect1d(indxs, np.where(Einfo['frs'] == fr1or3)[0])
+        #frs_valid = Einfo['frs'] == fr1or3
     else:
-        frs_valid = Einfo['frs'] > 0
-    to_use = frs_valid[indxs]
+        mod_indxs = indxs
+        #frs_valid = Einfo['frs'] > 0
+    #to_use = frs_valid[indxs]
 
-    r = deepcopy(resp[indxs])
+    #r = deepcopy(resp[mod_indxs])
     #if len(resp) > len(indxs):
     #    r = deepcopy(resp[indxs])
     #else:
     #    r = deepcopy(resp)
     
     _= Tglm.train(
-        input_data=[Xs[to_use,:], Xb[to_use,:]], output_data=resp[to_use], learning_alg='lbfgs',# fit_variables=v2fT,
-        opt_params=opt_params)
-    _= DTglm.train(
-        input_data=[Xs[to_use,:], Xb[to_use,:], Xd[to_use,:]], output_data=r[to_use], # fit_variables=v2f, 
+        input_data=[Xs[mod_indxs,:], Xb[mod_indxs,:]], output_data=resp[mod_indxs], # fit_variables=v2fT,
         learning_alg='lbfgs', opt_params=opt_params)
+    _= DTglm.train(
+        input_data=[Xs[mod_indxs,:], Xb[mod_indxs,:], Xd[mod_indxs,:]], # fit_variables=v2f, 
+        output_data=resp[mod_indxs], learning_alg='lbfgs', opt_params=opt_params)
     #p1 = Tglm.eval_models(input_data=Xs[indxs,:], output_data=r)[0]
     #p2 = DTglm.eval_models(input_data=[Xs[indxs,:], Xd[indxs,:]], output_data=r)[0]
     #print( "Model performances: %0.4f  -> %0.4f"%(p1, p2) )
@@ -300,6 +302,83 @@ def disparity_predictions( Einfo, resp, indxs=None, num_dlags=8, fr1or3=None, sp
     
     return predD, predT
 
+
+def binocular_model_performance( Einfo=None, Robs=None, Rpred=None, indxs=None, cell_num=1, opt_params=None ):
+    """Current best-practices for generating prediction quality of neuron and binocular tuning. Currently we
+    are not worried about using cross-validation indices only (as they are based on much less data and tend to
+    otherwise be in agreement with full measures, but this option could be added in later versions."""
+
+    assert Einfo is not None, 'Need to include Einfo'
+    assert indxs is not None, 'Need to include valid indxs'
+    if opt_params is None:
+        opt_params = NDN.NDN.optimizer_defaults(opt_params={'use_gpu': True, 'display': True}, learning_alg='lbfgs')
+    
+    
+    indxs3 = np.intersect1d(indxs, np.where(Einfo['frs'] == 3)[0])
+    indxs1 = np.intersect1d(indxs, np.where(Einfo['frs'] == 1)[0])
+    
+    # make disparity predictions for all conditions
+    # -- actually checked and best to fit both data simultaneously. So: do all possibilities
+    dobs0, tobs0 = disparity_predictions(Einfo, Robs, indxs, spiking=True, opt_params=opt_params )
+    dmod0, tmod0 = disparity_predictions( Einfo, Rpred, indxs, spiking=False, opt_params=opt_params )
+
+    dobs1, tobs1 = disparity_predictions(Einfo, Robs, indxs1, spiking=True, opt_params=opt_params )
+    dmod1, tmod1 = disparity_predictions( Einfo, Rpred, indxs1, spiking=False, opt_params=opt_params )
+
+    dobs3, tobs3 = disparity_predictions(Einfo, Robs, indxs3, spiking=True, opt_params=opt_params )
+    dmod3, tmod3 = disparity_predictions( Einfo, Rpred, indxs3, spiking=False, opt_params=opt_params )
+
+    # Calculate overall
+    ev, tv = explainable_variance_binocular( Einfo, Robs, indxs=indxs, cell_num=cell_num)
+    ev3, tv3 = explainable_variance_binocular( Einfo, Robs, indxs=indxs3, cell_num=cell_num)
+    ev1, tv1 = explainable_variance_binocular( Einfo, Robs, indxs=indxs3, cell_num=cell_num) 
+    
+    if ev == tv:
+        ev_valid = True
+    else:
+        ev_valid = False
+    dv_obs = np.var(dobs0[indxs]-tobs0[indxs])
+    dv_obs3 = np.var(dobs0[indxs3]-tobs0[indxs3])
+    dv_obs1 = np.var(dobs0[indxs1]-tobs0[indxs1])
+    dv_pred = np.var(dmod0[indxs]-tmod0[indxs])
+    dv_pred3a = np.var(dmod0[indxs3]-tmod0[indxs3])
+    dv_pred3b = np.var(dmod3[indxs3]-tmod3[indxs3])
+    dv_pred1a = np.var(dmod0[indxs1]-tmod0[indxs1])
+    dv_pred1b = np.var(dmod1[indxs1]-tmod1[indxs1])
+    
+    print( "\nOverall explainable variance fraction: %0.2f"%(ev/tv) )
+    print( "Obs disparity variance fraction: %0.2f (FR3: %0.2f)"%(dv_obs/ev, dv_obs3/ev3) )
+    vars_obs = [tv, ev, dv_obs, ev-dv_obs ]  # total, explainable, disp_var, pattern_var
+    vars_obs_FR3 = [tv3, ev3, dv_obs3, ev3-dv_obs3 ]  # total, explainable, disp_var, pattern_var
+    DVfrac_obs = [dv_obs/ev, dv_obs3/ev3, dv_obs1/ev1 ]
+
+    vars_mod = [np.var(Rpred[indxs]), dv_pred, np.var(Rpred[indxs])-dv_pred]
+    DVfrac_mod = [dv_pred/np.var(Rpred[indxs]), 
+                  dv_pred3a/np.var(Rpred[indxs3]), 
+                  dv_pred1a/np.var(Rpred[indxs1])]
+    #DVfrac_mod_alt = [dv_mod/np.var(Rpred[indxs]), 
+    #                  dv_pred3b/np.var(Rpred[indxs3]), 
+    #                  dv_pred1b/np.var(Rpred[indxs1])]
+    
+    # Predictive powers (model performance): full response and then disparity
+    pps = [predictive_power_binocular( Robs, Rpred, indxs=indxs, Einfo=Einfo, cell_num=cell_num ),
+           #predictive_power_binocular(dobs0, dmod0, indxs=indxs, Einfo=Einfo, cell_num=cell_num),
+           predictive_power_binocular(dobs0-tobs0, dmod0-tmod0, indxs=indxs, Einfo=Einfo, cell_num=cell_num)]
+    # bound possible pps 
+    
+    pps_dispFR3 = [predictive_power_binocular( dobs0, dmod0, indxs=indxs3, Einfo=Einfo, cell_num=cell_num ),
+                   predictive_power_binocular( dobs0, dmod3, indxs=indxs3, Einfo=Einfo, cell_num=cell_num )]
+    pps_dispFR1 = [predictive_power_binocular( dobs0, dmod0, indxs=indxs1, Einfo=Einfo, cell_num=cell_num ),
+                   predictive_power_binocular( dobs0, dmod1, indxs=indxs1, Einfo=Einfo, cell_num=cell_num )]
+
+    print( "Pred powers: %0.3f  disp %0.3f (FR3 %0.3f)"%(pps[0], pps[1], pps_dispFR3[0]))
+
+    BMP = {'EVfrac': ev/tv, 'EVvalid': ev_valid, 
+           'vars_obs': vars_obs, 'vars_mod': vars_mod, 'vars_obs_FR3': vars_obs_FR3,
+           'DVfrac_obs': DVfrac_obs, 'DVfrac_mod': DVfrac_mod, 
+           'pred_powers': pps, 'pps_disp_FR3': pps_dispFR3, 'pps_disp_FR1': pps_dispFR1}
+    
+    return BMP
 
 ########### FILE MANAGEMENT FOR BINOCULAR MODELS / DATA ###########
 def binocular_matlab_export(binoc_mod, filename):
