@@ -455,14 +455,14 @@ class NDN(object):
             x_mean = tf.reduce_mean(x, axis=0)
             y_mean = tf.reduce_mean(y, axis=0)
             corr_per_neuron = tf.divide(
-                    ((x-x_mean)*(y-y_mean))
+                    tf.reduce_sum((x-x_mean)*(y-y_mean), axis=0)
                 ,
                     tf.sqrt(tf.reduce_sum((x - x_mean)**2, axis=0))*
                     tf.sqrt(tf.reduce_sum((y - y_mean)**2,axis=0))
                 )
-            corr_no_nans = tf.where(tf.is_nan(corr_per_neuron), tf.zeros_like(corr_per_neuron), corr_per_neuron)
+            corr_no_nans = tf.where(tf.is_finite(corr_per_neuron), corr_per_neuron, tf.zeros_like(corr_per_neuron))
 
-            self.correlation = tf.reduce_sum(corr_no_nans, axis=0)
+            self.correlation = corr_no_nans
             tf.summary.scalar('correlation', tf.reduce_mean(self.correlation))
 
 
