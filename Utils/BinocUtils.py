@@ -399,7 +399,7 @@ def binocular_matlab_export(binoc_mod, filename):
 
 
 def binocular_data_import( datadir, expt_num ):
-    """Usage: stim, Robs, DFs, used_inds = binocular_data_import( datadir, expt_num )
+    """Usage: stim, Robs, DFs, used_inds, Eadd_info = binocular_data_import( datadir, expt_num )
 
     Inputs:
         datadir: directory on local drive where datafiles are
@@ -511,6 +511,7 @@ def binocular_data_import_cell( datadir, expt_num, cell_num ):
     _model.train( input_data=stim[used_inds_cell,:], output_data=Robs[used_inds_cell], train_indxs=UiC, ...)
     """
 
+    assert cell_num > 0, 'cell number must be positive'
     stim_all, Robs_all, DFs, used_inds, Einfo = binocular_data_import( datadir, expt_num )
 
     cellspecificdata = np.where(DFs[:, cell_num-1] > 0)[0]
