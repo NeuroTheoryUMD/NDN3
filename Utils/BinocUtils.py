@@ -382,7 +382,8 @@ def binocular_model_performance( Einfo=None, Robs=None, Rpred=None, indxs=None, 
     BMP = {'EVfrac': ev/tv, 'EVvalid': ev_valid, 
            'vars_obs': vars_obs, 'vars_mod': vars_mod, 'vars_obs_FR3': vars_obs_FR3,
            'DVfrac_obs': DVfrac_obs, 'DVfrac_mod': DVfrac_mod, 
-           'pred_powers': pps, 'pps_disp_FR3': pps_dispFR3, 'pps_disp_FR1': pps_dispFR1}
+           'pred_powers': pps, 'pps_disp_FR3': pps_dispFR3, 'pps_disp_FR1': pps_dispFR1,
+           'Dtun_obs': Dtun_info_obs, 'Dtun_pred': Dtun_info_pred}
     
     return BMP
 
