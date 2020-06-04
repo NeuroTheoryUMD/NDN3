@@ -373,6 +373,12 @@ def binocular_model_performance( Einfo=None, Robs=None, Rpred=None, indxs=None, 
 
     print( "Pred powers: %0.3f  disp %0.3f (FR3 %0.3f)"%(pps[0], pps[1], pps_dispFR3[0]))
 
+    # Add general tuning of each
+    Dtun_info_obs = [disparity_tuning( Einfo, Robs, indexs, fr1or3=3, to_plot=False),
+        disparity_tuning( Einfo, Robs, used_cell, fr1or3=1, to_plot=False)]
+    Dtun_info_pred = [disparity_tuning( Einfo, Rpred, indexs, fr1or3=3, to_plot=False),
+        disparity_tuning( Einfo, Rpred, indexs, fr1or3=1, to_plot=False)]
+
     BMP = {'EVfrac': ev/tv, 'EVvalid': ev_valid, 
            'vars_obs': vars_obs, 'vars_mod': vars_mod, 'vars_obs_FR3': vars_obs_FR3,
            'DVfrac_obs': DVfrac_obs, 'DVfrac_mod': DVfrac_mod, 
