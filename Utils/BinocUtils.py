@@ -313,13 +313,17 @@ def binocular_model_performance( Einfo=None, Robs=None, Rpred=None, indxs=None, 
     if opt_params is None:
         opt_params = NDN.NDN.optimizer_defaults(opt_params={'use_gpu': True, 'display': True}, learning_alg='lbfgs')
     
-    
+    if len(Robs.shape) == 1:
+        Robs = np.expand_dims(Robs, axis=1)
+    if len(Rpred.shape) == 1:
+        Rpred = np.expand_dims(Rpred, axis=1)
+
     indxs3 = np.intersect1d(indxs, np.where(Einfo['frs'] == 3)[0])
     indxs1 = np.intersect1d(indxs, np.where(Einfo['frs'] == 1)[0])
     
     # make disparity predictions for all conditions
     # -- actually checked and best to fit both data simultaneously. So: do all possibilities
-    dobs0, tobs0 = disparity_predictions(Einfo, Robs, indxs, spiking=True, opt_params=opt_params )
+    dobs0, tobs0 = disparity_predictions( Einfo, Robs, indxs, spiking=True, opt_params=opt_params )
     dmod0, tmod0 = disparity_predictions( Einfo, Rpred, indxs, spiking=False, opt_params=opt_params )
 
     dobs1, tobs1 = disparity_predictions(Einfo, Robs, indxs1, spiking=True, opt_params=opt_params )
@@ -331,20 +335,20 @@ def binocular_model_performance( Einfo=None, Robs=None, Rpred=None, indxs=None, 
     # Calculate overall
     ev, tv = explainable_variance_binocular( Einfo, Robs, indxs=indxs, cell_num=cell_num)
     ev3, tv3 = explainable_variance_binocular( Einfo, Robs, indxs=indxs3, cell_num=cell_num)
-    ev1, tv1 = explainable_variance_binocular( Einfo, Robs, indxs=indxs3, cell_num=cell_num) 
+    ev1, tv1 = explainable_variance_binocular( Einfo, Robs, indxs=indxs1, cell_num=cell_num) 
     
     if ev == tv:
-        ev_valid = True
-    else:
         ev_valid = False
+    else:
+        ev_valid = True
     dv_obs = np.var(dobs0[indxs]-tobs0[indxs])
     dv_obs3 = np.var(dobs0[indxs3]-tobs0[indxs3])
     dv_obs1 = np.var(dobs0[indxs1]-tobs0[indxs1])
     dv_pred = np.var(dmod0[indxs]-tmod0[indxs])
-    dv_pred3a = np.var(dmod0[indxs3]-tmod0[indxs3])
-    dv_pred3b = np.var(dmod3[indxs3]-tmod3[indxs3])
-    dv_pred1a = np.var(dmod0[indxs1]-tmod0[indxs1])
-    dv_pred1b = np.var(dmod1[indxs1]-tmod1[indxs1])
+    dv_pred3a = np.var(dmod3[indxs3]-tmod3[indxs3])
+    #dv_pred3b = np.var(dmod3[indxs3]-tmod3[indxs3])
+    dv_pred1a = np.var(dmod1[indxs1]-tmod1[indxs1])
+    #dv_pred1b = np.var(dmod1[indxs1]-tmod1[indxs1])
     
     print( "\nOverall explainable variance fraction: %0.2f"%(ev/tv) )
     print( "Obs disparity variance fraction: %0.2f (FR3: %0.2f)"%(dv_obs/ev, dv_obs3/ev3) )
@@ -366,10 +370,12 @@ def binocular_model_performance( Einfo=None, Robs=None, Rpred=None, indxs=None, 
            predictive_power_binocular(dobs0-tobs0, dmod0-tmod0, indxs=indxs, Einfo=Einfo, cell_num=cell_num)]
     # bound possible pps 
     
-    pps_dispFR3 = [predictive_power_binocular( dobs0, dmod0, indxs=indxs3, Einfo=Einfo, cell_num=cell_num ),
-                   predictive_power_binocular( dobs0, dmod3, indxs=indxs3, Einfo=Einfo, cell_num=cell_num )]
-    pps_dispFR1 = [predictive_power_binocular( dobs0, dmod0, indxs=indxs1, Einfo=Einfo, cell_num=cell_num ),
-                   predictive_power_binocular( dobs0, dmod1, indxs=indxs1, Einfo=Einfo, cell_num=cell_num )]
+    pps_dispFR3 = [
+        predictive_power_binocular( dobs0-tobs0, dmod0-tmod0, indxs=indxs3, Einfo=Einfo, cell_num=cell_num ),
+        predictive_power_binocular( dobs3-tobs3, dmod3-tmod3, indxs=indxs3, Einfo=Einfo, cell_num=cell_num )]
+    pps_dispFR1 = [
+        predictive_power_binocular( dobs0-tobs0, dmod0-tmod0, indxs=indxs1, Einfo=Einfo, cell_num=cell_num ),
+        predictive_power_binocular( dobs1-tobs1, dmod1-tmod1, indxs=indxs1, Einfo=Einfo, cell_num=cell_num )]
 
     print( "Pred powers: %0.3f  disp %0.3f (FR3 %0.3f)"%(pps[0], pps[1], pps_dispFR3[0]))
 
