@@ -93,15 +93,16 @@ def explainable_variance_binocular( Einfo, resp, indxs, cell_num=None ):
     """This is the explainable variance calculation, and is binocular-specific because of the data structures
     in Einfo only. Note: will return total variance (and a warning) if repeats not present in the dataset."""
 
-    if Einfo['rep_inds'] is None:
-        print( 'No repeats in this dataset.')
-        return np.var(resp[indxs])
     if cell_num is None:
         print( 'Warning: cell-specific repeats not given: using cc=0.')
         cell_num = 1
     else:
         if cell_num == 0:
             print('Warning: must use matlab-style cell numbers (starting at 1)')
+
+    if Einfo['rep_inds'] is None:
+        print( 'No repeats in this dataset.')
+        return np.var(resp[indxs]), np.var(resp[indxs])
             
     rep1inds = np.intersect1d(indxs, Einfo['rep_inds'][cell_num-1][:,0])
     rep2inds = np.intersect1d(indxs, Einfo['rep_inds'][cell_num-1][:,1])
@@ -183,6 +184,7 @@ def disparity_tuning( Einfo, r, used_inds=None, num_dlags=8, fr1or3=3, to_plot=F
         frs_valid = Einfo['frs'] > 0
     
     to_use = frs_valid[used_inds]
+
     dmatN = dmat / np.mean(dmat[used_inds[to_use],:], axis=0) * np.mean(dmat[used_inds[to_use],:])
     Xmat = NDNutils.create_time_embedding( dmatN[:, range(ND*2)], [num_dlags, 2*ND, 1])[used_inds, :]
     # uncorrelated response
@@ -471,14 +473,23 @@ def binocular_data_import( datadir, expt_num ):
     # disparity (sometime shifted to drive neurons well)
     # Sometimes a slightly disparity is used, so it helps to round the values at some resolution
     dispt = np.round(dispt_raw*100)/100
+    frs = NDNutils.shift_mat_zpad( Bmatdat['all_frs'][:,0], time_shift, 0 )
+    corrt = NDNutils.shift_mat_zpad( Bmatdat['all_corrs'][:,0], time_shift, 0 )
+    # Make dispt consistent with corrt (early experiments had dispt labeled incorrectly)
+    corr_funny = np.where((corrt == 0) & (dispt != -1005))[0]
+    if len(corr_funny) > 0:
+        print( "Warning: %d indices have corr=0 but labeled disparity."%len(corr_funny) )
+        dispt[corr_funny] = -1005
+
     disp_list = np.unique(dispt)
     # where it is -1009 this corresponds to a blank frame
     # where it is -1005 this corresponds to uncorrelated images between the eyes
-    corrt = NDNutils.shift_mat_zpad( Bmatdat['all_corrs'][:,0], time_shift, 0 )
-    frs = NDNutils.shift_mat_zpad( Bmatdat['all_frs'][:,0], time_shift, 0 )
 
     if Bmatdat['rep_inds'] is None:
-        rep_inds = [None]*numSUs
+        #rep_inds = [None]*numSUs
+        rep_inds = None
+    elif len(Bmatdat['rep_inds'][0][0]) < 10:
+        rep_inds = None
     else:
         rep_inds = []
         for cc in range(numSUs):
