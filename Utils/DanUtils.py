@@ -1057,6 +1057,16 @@ def scaffold_plot_cell(side_ndn, cell_n, with_inh=True, nolabels=True, skip_firs
 
 
 ## RANDOM UTILITY FUNCTIONS
+def figure_export( fig_handle, filename, bitmap=False, dpi=300):
+    """Usage: figure_export( fig_handle, filename, variable_list, bitmap=False, dpi=300)
+    if bitmap, will use dpi and export as .png. Otherwise will export PDF"""
+
+    if bitmap:
+        fig_handle.savefig( filename, bbox_inches='tight', dpi=dpi)
+    else:
+        fig_handle.savefig( filename, bbox_inches='tight')
+
+
 def matlab_export(filename, variable_list):
     """Export list of variables to .mat file"""
 
