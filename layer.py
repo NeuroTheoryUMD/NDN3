@@ -707,7 +707,8 @@ class DiffOfGaussiansLayer(Layer):
         # alpha is always positive
         alpha = tf.maximum(alpha, np.finfo(float).eps)
 
-        gm_np = (alpha/(sigma ** 2)) * tf.exp(-((X - ux) ** 2 + (Y - uy) ** 2) / (2*(sigma ** 2)))
+        gm_np = (alpha) * (tf.exp(-((X - ux) ** 2 + (Y - uy) ** 2) / 2 / sigma) / (2*sigma*np.pi))   # implementation is slighly different than paper (not sigma^2)
+
         return gm_np
 
     def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
