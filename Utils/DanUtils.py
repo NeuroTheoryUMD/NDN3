@@ -34,10 +34,12 @@ def tbasis_recover_filters(ndn_mod, ffnet=None):
 
     assert np.prod(ndn_mod.networks[ffnet].layers[0].filter_dims[1:]) == 1, 'only works with temporal-only basis'
 
-    if ndn_mod.networks[ffnet].layers[0].filter_basis is None:
-        tkerns = ndn_mod.networks[ffnet].layers[0].weights
+
+    if hasattr(ndn_mod.networks[ffnet].layers[0], 'filter_basis') and \
+        ndn_mod.networks[ffnet].layers[0].filter_basis is not None:
+        tkerns = ndn_mod.networks[ffnet].layers[0].filter_basis@ndn_mod.networks[ffnet].layers[0].weights        
     else:
-        tkerns = ndn_mod.networks[ffnet].layers[0].filter_basis@ndn_mod.networks[ffnet].layers[0].weights
+        tkerns = ndn_mod.networks[ffnet].layers[0].weights
     
     num_lags, num_tkerns = tkerns.shape
     
@@ -250,6 +252,15 @@ def plot_3dfilters(ndnmod=None, filters=None, dims=None, plot_power=False, ffnet
     plt.show()
 # END plot_3dfilters
 
+
+def plot_scatter( xs, ys, clr='g' ):
+    assert len(xs) == len(ys), 'data dont match'
+    for nn in range(len(xs)):
+        plt.plot([xs[nn]], [ys[nn]], clr+'o', fillstyle='full')
+        if clr != 'k':
+            plt.plot([xs[nn]], [ys[nn]], 'ko', fillstyle='none')
+    #plt.show()
+    
 
 def plot_internal_weights(ws, num_inh=None):
     ws_play = deepcopy(ws)
