@@ -1933,7 +1933,7 @@ class MultLayer(Layer):
     def write_layer_params(self, sess):
         """Write weights/biases in tf Variables to numpy arrays"""
 
-        num_input_streams = self.input_dims[0]
+        #num_input_streams = self.input_dims[0]
         #num_outputs = self.output_dims[1]
         _tmp_weights = sess.run(self.weights_var)
 

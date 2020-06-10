@@ -214,7 +214,7 @@ def plot_3dfilters(ndnmod=None, filters=None, dims=None, plot_power=False, ffnet
         NK = filters.shape[-1]
         ks = np.reshape(deepcopy(filters), [np.prod(dims), NK])
 
-    ncol = 8
+    ncol = np.minimum(8, 2*NK)
     nrow = np.ceil(2 * NK / ncol).astype(int)
     subplot_setup(nrow, ncol)
     for nn in range(NK):
