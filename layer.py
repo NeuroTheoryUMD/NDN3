@@ -407,6 +407,22 @@ class Layer(object):
         """Wrapper function for returning regularization penalty dict"""
         return self.reg.get_reg_penalty(sess)
 
+    def get_weights( self, w_range=None, reshape=False ):
+        """Return a matrix with the desired weights from the NDN. Can select subset of weights using
+        w_range (default is return all), and can also reshape based on the filter dims (setting reshape=True).
+        """
+        
+        if w_range is None:
+            w_range = np.arange(self.num_filters)
+        else:
+            assert np.max(w_range) < self.num_filters, 'w_range exceeds number of filters'
+    
+        ws = deepcopy(self.weights[:, w_range])
+        if reshape:
+            return np.reshape( ws, self.filters_dims + [len(w_range)])
+        else:
+            return ws
+
 
 class ConvLayer(Layer):
     """Implementation of convolutional layer

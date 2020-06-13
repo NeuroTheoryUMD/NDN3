@@ -1097,6 +1097,20 @@ def matlab_export(filename, variable_list):
     sio.savemat(filename, matdata)
 
 
+def save_python_data( filename, data ):
+    with open( filename, 'wb') as f:
+        np.save(f, data)
+    print( 'Saved data to', filename )
+
+
+def load_python_data( filename, data ):
+
+    with open( filename, 'rb') as f:
+        data = np.load(f, allow_pickle=True)
+    print( 'Loaded data from', filename )
+    return data
+
+
 def entropy(dist):
 
     # normalize distribution

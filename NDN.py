@@ -978,6 +978,13 @@ class NDN(object):
 
         return reg_dict
 
+    def get_weights( self, layer_target, ffnet_target=0, w_range=None, reshape=False ):
+        """Return a matrix with the desired weights from the NDN. Can select subset of weights using
+        w_range (default is return all), and can also reshape based on the filter dims (setting reshape=True)."""
+
+        assert ffnet_target < len(self.networks), 'ffnet_target out of range.'
+        return self.networks[ffnet_target].get_weights( layer_target, w_range=w_range, reshape=reshape) 
+
     def copy_model(self, tf_seed=0):
         """Makes an exact copy of model without further elaboration."""
 
