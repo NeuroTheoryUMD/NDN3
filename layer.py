@@ -419,7 +419,7 @@ class Layer(object):
     
         ws = deepcopy(self.weights[:, w_range])
         if reshape:
-            return np.reshape( ws, self.filters_dims + [len(w_range)])
+            return np.reshape( ws, self.filter_dims + [len(w_range)])
         else:
             return ws
 
