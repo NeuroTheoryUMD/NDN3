@@ -1103,11 +1103,15 @@ def save_python_data( filename, data ):
     print( 'Saved data to', filename )
 
 
-def load_python_data( filename, data ):
+def load_python_data( filename, show_keys=False ):
 
     with open( filename, 'rb') as f:
         data = np.load(f, allow_pickle=True)
     print( 'Loaded data from', filename )
+    if len(data.shape) == 0:
+        data = data.flat[0]  # to rescue dictionaries
+    if (type(data) is dict) and show_keys:
+        print(data.keys())
     return data
 
 
