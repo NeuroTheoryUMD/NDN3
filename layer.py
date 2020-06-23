@@ -678,12 +678,25 @@ class DiffOfGaussiansLayer(Layer):
         self.output_dims = output_dims
         self.input_dims = input_dims
 
+        self.impl_concentric = True
+        self.impl_sigma = True
+        self.impl_bounds = True
+
         if weights_initializer == 'random':
             self.weights = np.array(self.__get_random_w(num_filters) + self.__get_random_w(num_filters), np.float32)
+
 
     # END DiffOfGaussiansLayer.__init__
 
     def __get_random_w(self, num_filters):
+        if self.impl_bounds:
+            return [
+                [np.random.sample()*10 for x in range(num_filters)], # alpha
+                [np.random.sample()*24+1 for x in range(num_filters)], # sigma
+                [np.random.sample()*(self.input_dims[1] - 4) + 2 for x in range(num_filters)], # ux
+                [np.random.sample()*(self.input_dims[2] - 4) + 2 for x in range(num_filters)], # uy
+            ]
+        else:
             return [
                 [np.random.sample()*20-10 for x in range(num_filters)], # alpha
                 [np.random.sample()*max(self.input_dims[1], self.input_dims[2]) for x in range(num_filters)], # sigma
@@ -691,25 +704,53 @@ class DiffOfGaussiansLayer(Layer):
                 [np.random.sample()*self.input_dims[2] for x in range(num_filters)], # uy
             ]
 
-    def __get_gaussian(self, weights, num_filters, X, Y, weights_index_offset=0):
+    def __get_weights_clipped(self, weights, num_filters, weights_index_offset=0):
         index_baseline = 4 * weights_index_offset
+
         alpha = tf.reshape(tf.gather(weights, 0 + index_baseline), [1, 1, num_filters])
         sigma = tf.reshape(tf.gather(weights, 1 + index_baseline), [1, 1, num_filters])
+
         ux = tf.reshape(tf.gather(weights, 2 + index_baseline), [1, 1, num_filters])
         uy = tf.reshape(tf.gather(weights, 3 + index_baseline), [1, 1, num_filters])
 
         # Centers (ux, uy) within image:
-        ux = tf.clip_by_value(ux, 0, self.input_dims[1])
-        uy = tf.clip_by_value(uy, 0, self.input_dims[2])
-
         # signma is positive and smaller than the size of the image 
-        sigma = tf.clip_by_value(sigma, np.finfo(float).eps, max(self.input_dims[1], self.input_dims[2]))
         # alpha is always positive
-        alpha = tf.maximum(alpha, np.finfo(float).eps)
+        if self.impl_bounds:
+            ux = tf.clip_by_value(ux, 2, self.input_dims[1]-2)
+            uy = tf.clip_by_value(uy, 2, self.input_dims[2]-2)     
+            sigma = tf.clip_by_value(sigma, 1, 25)
+            alpha = tf.clip_by_value(alpha, np.finfo(float).eps, 10.0)
+        else:
+            ux = tf.clip_by_value(ux, 0, self.input_dims[1])
+            uy = tf.clip_by_value(uy, 0, self.input_dims[2])    
+            sigma = tf.clip_by_value(sigma, np.finfo(float).eps, max(self.input_dims[1], self.input_dims[2]))
+            alpha = tf.maximum(alpha, np.finfo(float).eps)
 
-        gm_np = (alpha) * (tf.exp(-((X - ux) ** 2 + (Y - uy) ** 2) / 2 / sigma) / (2*sigma*np.pi))   # implementation is slighly different than paper (not sigma^2)
+        return (alpha, sigma, ux, uy)
 
-        return gm_np
+
+    def __get_gaussian(self, X, Y, alpha, sigma, ux, uy):
+        return (alpha) * (tf.exp(-((X - ux) ** 2 + (Y - uy) ** 2) / 2 / sigma) / (2*sigma*np.pi))   # implementation is slightly different than paper (not sigma^2)
+
+    def __get_DoG(self, weights, W, H, num_filters):
+        (alpha1, sigma1, ux1, uy1) = self.__get_weights_clipped(weights, num_filters, 0)
+        (alpha2, sigma2, ux2, uy2) = self.__get_weights_clipped(weights, num_filters, 1)
+
+        X, Y = np.meshgrid(W, H)
+        X = tf.constant(np.expand_dims(X, 2).astype(np.float32))
+        Y = tf.constant(np.expand_dims(Y, 2).astype(np.float32))
+
+        if self.impl_sigma:
+            sigma2 = sigma1 + sigma2
+        if self.impl_concentric:
+            ux2, uy2 = ux1, uy1
+
+        DoG1 = self.__get_gaussian(X, Y, alpha1, sigma1, ux1, uy1)
+        DoG2 = self.__get_gaussian(X, Y, alpha2, sigma2, ux2, uy2)
+
+        return DoG1 - DoG2
+
 
     def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
 
@@ -730,14 +771,11 @@ class DiffOfGaussiansLayer(Layer):
             # Prepare index meshgrid
             W = np.array(range(self.input_dims[1]))
             H = np.array(range(self.input_dims[2]))
-            X, Y = np.meshgrid(W, H)
-            X = tf.constant(np.expand_dims(X, 2).astype(np.float32))
-            Y = tf.constant(np.expand_dims(Y, 2).astype(np.float32))
 
             num_filters = self.output_dims[0]
             weights = tf.reshape(self.weights_var, [8, num_filters])
             
-            gm_np = self.__get_gaussian(weights, num_filters, X, Y, 0) - self.__get_gaussian(weights, num_filters, X, Y, 1)
+            gm_np = self.__get_DoG(weights, W, H, num_filters)
             gm = tf.expand_dims(gm_np, 2) # W, H, 1, num_filters
 
             gaussed = tf.multiply(shaped_input, gm)
