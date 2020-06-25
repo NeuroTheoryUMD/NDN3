@@ -2432,6 +2432,11 @@ class NDN(object):
         if type(input_data) is not list:
             input_data = [input_data]
         self.num_examples = input_data[0].shape[0]
+        # add dimensions to input data as needed
+        for nn in range(len(input_data)):
+            if len(input_data[nn].shape) == 1:
+                input_data[nn] = np.expand_dims(input_data[nn], 1)
+
         num_outputs = len(self.ffnet_out)
 
         if output_data is not None:
