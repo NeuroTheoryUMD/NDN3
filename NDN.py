@@ -2500,7 +2500,7 @@ class NDN(object):
             if np.sum(self.network_list[nn]['time_expand']) > 0:
                 for ll in range(len(self.networks[nn].layers)):
                     if (self.network_list[nn]['time_expand'][ll] > 0) and \
-                            ((self.network_list[nn]['layer_types'][ll] != 'temporal') or \
+                            ((self.network_list[nn]['layer_types'][ll] != 'temporal') and \
                                 (self.network_list[nn]['layer_types'][ll] != 'sp_temporal')):
                         can_we = False
         return can_we
