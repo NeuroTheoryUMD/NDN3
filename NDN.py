@@ -2474,7 +2474,6 @@ class NDN(object):
                 raise ValueError('Input data dims must match across input_data.')
         for nn, temp_data in enumerate(output_data):
             if temp_data.shape[0] != self.num_examples:
-                print('in', nn, temp_data.shape, self.num_examples)
                 raise ValueError('Output dim0 must match model values')
             if len(temp_data.shape) < 2:
                 output_data[nn] = np.expand_dims(temp_data, axis=1)
