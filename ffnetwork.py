@@ -413,7 +413,8 @@ class FFNetwork(object):
                 self.layers.append(DiffOfGaussiansLayer(
                     scope='diff_of_gaussians_%i' % nn,
                     input_dims=layer_sizes[nn],
-                    num_filters=layer_sizes[nn + 1],
+                    num_filters=layer_sizes[nn + 1],              
+                    bounds=network_params['bounds'][nn] if 'bounds' in network_params else None,
                     activation_func=network_params['activation_funcs'][nn],
                     normalize_weights=network_params['normalize_weights'][nn],
                     weights_initializer=network_params['weights_initializers'][nn],
