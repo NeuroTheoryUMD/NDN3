@@ -18,7 +18,7 @@ def plot_norm( k, ksize = [36,20], cmap='gray', max_val=None):
         kr = k
     else:
         kr = np.reshape(k, ksize)
-    plt.imshow(kr, cmap=cmap, vmin=-max_val, vmax=max_val)
+    plt.imshow(kr, cmap=cmap, vmin=-max_val, vmax=max_val, aspect='auto')
 
 
 def subplot_setup(num_rows, num_cols, row_height=2):
