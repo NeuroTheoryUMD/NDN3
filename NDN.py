@@ -1064,6 +1064,7 @@ class NDN(object):
         target.data_pipe_type = self.data_pipe_type
         target.batch_size = self.batch_size
         target.time_spread = self.time_spread
+        target.log_correlation = self.log_correlation
 
         # Copy all the parameters
         for nn in range(self.num_networks):
