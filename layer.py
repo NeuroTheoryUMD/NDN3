@@ -2075,6 +2075,118 @@ class FilterLayer(Layer):
     # END FilterLayer._build_graph
 
 
+class Dim0Layer(Layer):
+    """Implementation of a layer that applies filters to first stimulus dimension (non-spatial) only
+
+    """
+
+    def __init__(
+            self,
+            scope=None,
+            input_dims=None,  # this can be a list up to 3-dimensions
+            output_dims=None,
+            activation_func='lin',
+            normalize_weights=1,
+            weights_initializer='normal',
+            biases_initializer='zeros',
+            reg_initializer=None,
+            num_inh=0,
+            pos_constraint=None,
+            log_activations=False):
+
+        """Constructor for Dim0Layer class
+
+        Args:
+            scope (str): name scope for variables and operations in layer
+            input_dims (int): dimensions of input data
+            output_dims (int): dimensions of output data
+            activation_func (str, optional): pointwise function applied to
+                output of affine transformation
+                ['relu'] | 'sigmoid' | 'tanh' | 'identity' | 'softplus' |
+                'elu' | 'quad'
+            normalize_weights (int): type of normalization to apply to the
+                weights. Default [0] is to normalize across the first dimension
+                (time/filters), but '1' will normalize across spatial
+                dimensions instead, and '2' will normalize both
+            reg_initializer (dict, optional): see Regularizer docs for info
+            num_inh (int, optional): number of inhibitory units in layer
+            pos_constraint (None, valued, optional): True to constrain layer weights to
+                be positive
+            log_activations (bool, optional): True to use tf.summary on layer
+                activations
+        """
+
+        # check for required inputs
+        if input_dims is None:
+            raise TypeError('Must specify input dimensions')
+
+        if input_dims[0] < 2:
+            raise TypeError('Dim0Layer: Input dimensions must have dimensionality.')
+
+        super(Dim0Layer, self).__init__(
+                scope=scope,
+                input_dims=input_dims,
+                filter_dims=[input_dims[0], 1, 1],
+                output_dims=output_dims, 
+                activation_func=activation_func,
+                normalize_weights=normalize_weights,
+                weights_initializer='zeros',
+                biases_initializer='zeros',
+                reg_initializer=reg_initializer,
+                num_inh=num_inh,
+                pos_constraint=pos_constraint,
+                log_activations=log_activations)
+
+        # num_lags not implemented yet
+        assert self.num_lags == 1, 'Havent taken care of number of lags being non-one yet.'
+        self.output_dims = [np.prod(output_dims), input_dims[1], input_dims[2]]
+        self.include_biases = False
+    # END Dim0Layer.__init__
+
+    def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
+        """Just collapse input over the first dimension -- replaced by num_filters."""
+
+        with tf.name_scope(self.scope):
+            self._define_layer_variables()
+
+            if self.pos_constraint is not None:
+                w_p = tf.maximum(self.weights_var, 0.0)
+            else:
+                w_p = self.weights_var
+
+            if self.normalize_weights > 0:
+                w_pn = tf.nn.l2_normalize(w_p, axis=0)
+            else:
+                w_pn = w_p
+
+            # reshape inputs and multiply
+            dim0 = self.filter_dims[0]
+            num_other_dims = np.prod(self.input_dims) // dim0
+
+            reshaped_inputs = tf.reshape(inputs, [-1, num_other_dims, dim0])
+            reshaped_weights = tf.expand_dims( w_pn, axis=0)
+
+            if self.include_biases:
+                pre = tf.add(
+                    tf.matmul(reshaped_inputs, reshaped_weights),
+                    self.biases_var)
+            else:
+                pre = tf.matmul(reshaped_inputs, reshaped_weights),
+
+            if self.ei_mask_var is None:
+                post = self._apply_act_func(pre)
+            else:
+                post = tf.multiply(self._apply_act_func(pre), self.ei_mask_var)
+
+            self.outputs = self._apply_dropout(post, use_dropout=use_dropout,
+                                               noise_shape=[1, self.num_filters])
+
+        if self.log:
+            tf.summary.histogram('act_pre', pre)
+            tf.summary.histogram('act_post', post)
+    # END Dim0Layer._build_graph
+
+
 class SpkNL_Layer(Layer):
     """Implementation of separable neural network layer; see
     http://papers.nips.cc/paper/6942-neural-system-identification-for-large-populations-separating-what-and-where

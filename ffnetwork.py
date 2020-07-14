@@ -21,8 +21,8 @@ class FFNetwork(object):
         num_layers (int): number of layers in network (not including input)
         layer_types (list of strs): a string for each layer in the network that 
             specifies its type.
-            'normal' | 'sep' | 'conv' | 'convsep' | 'biconv' | 'add' | 'spike_history'
-                    | 'convLNL'
+            'normal' | 'sep' | 'conv' | 'convsep' | 'biconv' | 'add' | 'mult' | 'spike_history'
+                    | 'convLNL' | 'dim0'
         layers (list of `Layer` objects): layers of network
         log (bool): use tf summary writers in layer activations
 
@@ -277,6 +277,21 @@ class FFNetwork(object):
                     output_dims=layer_sizes[nn+1],
                     activation_func=network_params['activation_funcs'][nn],
                     normalize_weights=network_params['normalize_weights'][nn],
+                    reg_initializer=network_params['reg_initializers'][nn],
+                    num_inh=network_params['num_inh'][nn],
+                    pos_constraint=network_params['pos_constraints'][nn],
+                    log_activations=network_params['log_activations']))
+
+            if self.layer_types[nn] == 'dim0':
+
+                self.layers.append(Dim0Layer(
+                    scope='dim0_layer_%i' % nn,
+                    input_dims=layer_sizes[nn],
+                    output_dims=layer_sizes[nn+1],
+                    activation_func=network_params['activation_funcs'][nn],
+                    normalize_weights=network_params['normalize_weights'][nn],
+                    weights_initializer=network_params['weights_initializers'][nn],
+                    biases_initializer=network_params['biases_initializers'][nn],
                     reg_initializer=network_params['reg_initializers'][nn],
                     num_inh=network_params['num_inh'][nn],
                     pos_constraint=network_params['pos_constraints'][nn],
