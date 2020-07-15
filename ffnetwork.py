@@ -282,7 +282,7 @@ class FFNetwork(object):
                     pos_constraint=network_params['pos_constraints'][nn],
                     log_activations=network_params['log_activations']))
 
-            if self.layer_types[nn] == 'dim0':
+            elif self.layer_types[nn] == 'dim0':
 
                 self.layers.append(Dim0Layer(
                     scope='dim0_layer_%i' % nn,

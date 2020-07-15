@@ -2158,25 +2158,28 @@ class Dim0Layer(Layer):
                 w_pn = tf.nn.l2_normalize(w_p, axis=0)
             else:
                 w_pn = w_p
-
+            
             # reshape inputs and multiply
             dim0 = self.filter_dims[0]
             num_other_dims = np.prod(self.input_dims) // dim0
 
             reshaped_inputs = tf.reshape(inputs, [-1, num_other_dims, dim0])
-            reshaped_weights = tf.expand_dims( w_pn, axis=0)
-
+            #reshaped_weights = tf.expand_dims( w_pn, axis=0)
+            
             if self.include_biases:
                 pre = tf.add(
-                    tf.matmul(reshaped_inputs, reshaped_weights),
+                    tf.tensordot(reshaped_inputs, w_pn, axes=[2,0]),
                     self.biases_var)
             else:
-                pre = tf.matmul(reshaped_inputs, reshaped_weights),
+                #pre = tf.matmul(reshaped_inputs, reshaped_weights),
+                pre = tf.tensordot(reshaped_inputs, w_pn, axes=[2,0]),
+
+            pre2 = tf.reshape(pre, [-1, num_other_dims*self.num_filters])
 
             if self.ei_mask_var is None:
-                post = self._apply_act_func(pre)
+                post = self._apply_act_func(pre2)
             else:
-                post = tf.multiply(self._apply_act_func(pre), self.ei_mask_var)
+                post = tf.multiply(self._apply_act_func(pre2), self.ei_mask_var)
 
             self.outputs = self._apply_dropout(post, use_dropout=use_dropout,
                                                noise_shape=[1, self.num_filters])
