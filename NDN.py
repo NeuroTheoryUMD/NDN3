@@ -36,7 +36,7 @@ class NDN(object):
             stream
         noise_dist (str): specifies the probability distribution used to define
             the cost function
-            ['poisson' | 'gaussian' | 'bernoulli']
+            ['poisson'] | 'gaussian' | 'bernoulli'
         tf_seed (int): rng seed for both tensorflow and numpy, which allows
             for reproducibly random initializations of parameters
         cost
@@ -50,7 +50,7 @@ class NDN(object):
         sess_config (tf.ConfigProto object): specifies configurations for
             tensorflow session, such as GPU utilization
         log_correlation (str): log correlation 
-            ['zero-NaNs' | 'filter-NaNs' | 'filter-low-std-gold']. 
+            [ None ] | 'zero-NaNs' | 'filter-NaNs' | 'filter-low-std-gold'. 
             'zero-NaNs': Assumes 0 correlation for neurons with NaN correlation.
             'filter-NaNs': Ignores neurons with NaN correlation.
             'filter-low-std-gold': 'filter-NaNs' + ignores neurons for which golden data have small std (<1e-5), based on https://openreview.net/pdf?id=H1fU8iAqKX | https://github.com/aecker/cnn-sys-ident/blob/master/cnn_sys_ident/architectures/training.py#L84
