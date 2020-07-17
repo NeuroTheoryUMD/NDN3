@@ -1733,6 +1733,9 @@ class AddLayer(Layer):
         num_outputs = np.prod( output_dims )
         num_input_streams = int(np.prod(input_dims) / num_outputs)
 
+        # Output dims combine input dims over first dimension
+        output_dims = [1] + input_dims[1:]
+
         # Input dims is just number of input streams
         input_dims = [num_input_streams, 1, 1]
 
@@ -1754,6 +1757,7 @@ class AddLayer(Layer):
                 pos_constraint=pos_constraint,
                 log_activations=log_activations)
 
+        self.output_dims = output_dims
         # Initialize all weights to 1, which is the default combination
         self.weights[:, :] = 1.0/np.sqrt(num_input_streams)
         self.biases[:] = 1e-8
@@ -1766,7 +1770,8 @@ class AddLayer(Layer):
         as the number of output units."""
 
         num_input_streams = self.input_dims[0]
-        num_outputs = self.output_dims[0]
+        # num_outputs = self.output_dims[0]
+        num_outputs = np.prod(self.output_dims)
         # inputs will be NTx(num_input_streamsxnum_outputs)
 
         with tf.name_scope(self.scope):
@@ -1879,14 +1884,16 @@ class MultLayer(Layer):
         assert num_input_streams == 2, 'Number of input streams for MultLayer must be 2.'
 
         # Input dims is just number of input streams
+        output_dims = [1] + input_dims[1:]  # constrained to be the same but collapsed first dim
         input_dims = [num_input_streams, 1, 1]
+        
         # can have overal weights, but not otherwise fit (so weight dims is output dims
 
         super(MultLayer, self).__init__(
                 scope=scope,
                 input_dims=input_dims,
                 filter_dims=[1, 1, 1],
-                output_dims=num_outputs,
+                output_dims=output_dims,
                 activation_func=activation_func,
                 normalize_weights=normalize_weights,
                 weights_initializer='normal',
@@ -1896,6 +1903,7 @@ class MultLayer(Layer):
                 pos_constraint=pos_constraint,
                 log_activations=log_activations)
 
+        self.output_dims = output_dims
         # Initialize all weights to very small deviations about 0, which would have minimal mult power
         self.weights[:, :] = 1.0 # default is multplication is transparent
 
@@ -1906,9 +1914,10 @@ class MultLayer(Layer):
         the first dimension of input_dims, and each stream will have the same number of inputs
         as the number of output units."""
 
-        num_outputs = self.output_dims[0]
+        # num_outputs = self.output_dims[0]
+        num_outputs = np.prod(self.output_dims)
         # inputs will be NTx2
-
+        
         with tf.name_scope(self.scope):
             self._define_layer_variables()
 
