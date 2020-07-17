@@ -149,6 +149,12 @@ class NDN(object):
         self.noise_dist = noise_dist
         self.tf_seed = tf_seed
 
+        # The seeds need to be set here as well (before weights get initiated as part of ._define_network)
+        # ..because otherwise they only get applied in ._build_graph which happens only after ._define_network
+        # ..(e.g. on .train(..)) and thus doesn't affect weight initialization only runtime.
+        np.random.seed(tf_seed)
+        tf.set_random_seed(tf_seed)
+
         self._define_network()
 
         # set parameters for graph (constructed for each train)
