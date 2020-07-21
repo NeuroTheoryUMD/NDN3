@@ -1947,6 +1947,8 @@ class AddLayer(Layer):
 
         # Output dims combine input dims over first dimension
         output_dims = [1] + input_dims[1:]
+        if input_dims[0] > num_input_streams:
+            output_dims[0] = (input_dims[0] // num_input_streams).astype(int)
 
         # Input dims is just number of input streams
         input_dims = [num_input_streams, 1, 1]
@@ -2129,7 +2131,7 @@ class MultLayer(Layer):
         # num_outputs = self.output_dims[0]
         num_outputs = np.prod(self.output_dims)
         # inputs will be NTx2
-        
+
         with tf.name_scope(self.scope):
             self._define_layer_variables()
 
