@@ -1948,7 +1948,7 @@ class AddLayer(Layer):
         # Output dims combine input dims over first dimension
         output_dims = [1] + input_dims[1:]
         if input_dims[0] > num_input_streams:
-            output_dims[0] = (input_dims[0] // num_input_streams).astype(int)
+            output_dims[0] = (input_dims[0] // num_input_streams)
 
         # Input dims is just number of input streams
         input_dims = [num_input_streams, 1, 1]
