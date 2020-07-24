@@ -431,12 +431,9 @@ class FFNetwork(object):
                     num_filters=layer_sizes[nn + 1],              
                     bounds=network_params['bounds'][nn] if 'bounds' in network_params else None,
                     activation_func=network_params['activation_funcs'][nn],
-                    normalize_weights=network_params['normalize_weights'][nn],
                     weights_initializer=network_params['weights_initializers'][nn],
                     biases_initializer=network_params['biases_initializers'][nn],
-                    reg_initializer=network_params['reg_initializers'][nn],
                     num_inh=network_params['num_inh'][nn],
-                    pos_constraint=network_params['pos_constraints'][nn],
                     log_activations=network_params['log_activations']))
             elif self.layer_types[nn] == 'conv_xy':
 
