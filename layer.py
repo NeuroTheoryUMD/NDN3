@@ -664,6 +664,9 @@ class DiffOfGaussiansLayer(Layer):
             num_filters = num_filters[0]
         output_dims = [num_filters]
 
+        if pos_constraint:
+            raise ValueError("pos_constraint can't be true for DiffOfGaussian layer")
+
         # Only random (with input-size bounds) or zero initializations are available for parameters this layer
         if not weights_initializer in ['zeros', 'random']:
             raise ValueError('Invalid weights_initializer ''%s''' %weights_initializer)
