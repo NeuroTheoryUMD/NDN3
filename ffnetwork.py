@@ -424,6 +424,15 @@ class FFNetwork(object):
                     pos_constraint=network_params['pos_constraints'][nn],
                     log_activations=network_params['log_activations']))
 
+            elif self.layer_types[nn] == 'lin_scale':
+                self.layers.append(LinScale(
+                    scope='lin_scale_%i' % nn,
+                    input_dims=layer_sizes[nn],
+                    activation_func=network_params['activation_funcs'][nn],
+                    reg_initializer=network_params['reg_initializers'][nn],
+                    pos_constraint=network_params['pos_constraints'][nn],
+                    log_activations=network_params['log_activations']))
+
             elif self.layer_types[nn] == 'diff_of_gaussians':
                 self.layers.append(DiffOfGaussiansLayer(
                     scope='diff_of_gaussians_%i' % nn,

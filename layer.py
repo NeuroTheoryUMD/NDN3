@@ -820,6 +820,97 @@ class DiffOfGaussiansLayer(Layer):
     # END DiffOfGaussiansLayer.build_graph
 
 
+class LinScale(Layer):
+    """Implementation of linear scale layer.
+       I*w+b: w, b being scalars. 
+
+       Note: if last layer -> needs to have 'layer_sizes` set to actual output size. Check in 
+       NDN::set_poisson_norm::1159 tests self.network_list[self.ffnet_out[ii]]['layer_sizes'][-1]
+       against output data shape and fails due to the actual output shape not being correctly propagated.
+    """
+
+    def __init__(
+            self,
+            scope=None,
+            input_dims=None,   # this can be a list up to 3-dimensions
+            activation_func='relu',
+            reg_initializer=None,
+            pos_constraint=None,
+            log_activations=False):
+        """Constructor for LinScale class
+
+        Args:
+            scope (str): name scope for variables and operations in layer
+            input_dims (int or list of ints): dimensions of input data
+            activation_func (str, optional): pointwise function applied to  
+                output of affine transformation
+                ['relu'] | 'sigmoid' | 'tanh' | 'identity' | 'softplus' | 
+                'elu' | 'quad'
+            reg_initializer (dict, optional): see Regularizer docs for info
+            pos_constraint (None, valued): True to constrain layer weights to
+                be positive
+            log_activations (bool, optional): True to use tf.summary on layer 
+                activations
+        """
+
+        # Process stim and filter dimensions
+        # (potentially both passed in as num_inputs list)
+        if isinstance(input_dims, list):
+            while len(input_dims) < 3:
+                input_dims.append(1)
+        else:
+            # assume 1-dimensional (space)
+            input_dims = [1, input_dims, 1]
+
+
+        super(LinScale, self).__init__(
+                scope=scope,
+                input_dims=1,   # Hack to initialize size of weights to the number of this layer's parameters
+                output_dims= 1,   
+                activation_func=activation_func,
+                normalize_weights=0,
+                weights_initializer='zeros',
+                biases_initializer='zeros',
+                reg_initializer=reg_initializer,
+                num_inh=0,
+                pos_constraint=pos_constraint,
+                log_activations=log_activations)
+
+        # Changes in properties from Layer - note this is implicitly multi-dimensional
+        self.output_dims = input_dims
+        self.input_dims = input_dims
+        self.num_filters = np.prod(input_dims)
+
+        self.weights = np.array([1.0]).astype(np.float32)
+        self.bias = np.array([0.0]).astype(np.float32)
+
+    # END LinScale.__init__
+
+    def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
+
+        assert params_dict is not None, 'Incorrect LinScale initialization.'
+        # Unfold Layer-specific parameters for building graph
+
+        with tf.name_scope(self.scope):
+            self._define_layer_variables()
+
+            if self.pos_constraint is not None:
+                w_p = tf.maximum(self.weights_var, 0.0)
+            else:
+                w_p = self.weights_var
+
+            _pre = tf.multiply(inputs, w_p)
+            pre = tf.add(_pre, self.biases_var)
+
+            self.outputs = self._apply_dropout(pre, use_dropout=use_dropout,
+                                            noise_shape=[1, self.num_filters])
+            
+        if self.log:
+            tf.summary.histogram('act_pre', pre)
+    # END LinScale.build_graph
+
+
+
 # class ClusterLayer(Layer):
 #     """Implementation of 'Cluster' layer: combined multiple subunits into separate streams for fitting
 #     non-shared subunits. This is non-convolutional. For now, just uses layer constructor, treated as nornal,
