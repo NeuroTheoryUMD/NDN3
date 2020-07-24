@@ -2422,7 +2422,7 @@ class NDN(object):
         import sys
         import dill
 
-        tmp_ndn = self.copy_model()
+        tmp_ndn = self.copy_model(self.tf_seed)
         sys.setrecursionlimit(10000)  # for dill calls to pickle
 
         if not os.path.isdir(os.path.dirname(save_file)):
