@@ -606,12 +606,9 @@ class DiffOfGaussiansLayer(Layer):
             num_filters=None,
             bounds=None,
             activation_func='relu',
-            normalize_weights=0,
             weights_initializer='normal',
             biases_initializer='zeros',
-            reg_initializer=None,
             num_inh=0,
-            pos_constraint=None,
             log_activations=False):
         """Constructor for DiffOfGaussiansLayer class
 
@@ -673,12 +670,12 @@ class DiffOfGaussiansLayer(Layer):
                 input_dims=8,   # Hack to initialize size of weights to the number of this layer's parameters
                 output_dims= output_dims,   
                 activation_func=activation_func,
-                normalize_weights=normalize_weights,
+                normalize_weights=0,
                 weights_initializer='zeros',
                 biases_initializer=biases_initializer,
-                reg_initializer=reg_initializer,
+                reg_initializer=None,
                 num_inh=num_inh,
-                pos_constraint=pos_constraint,
+                pos_constraint=None,
                 log_activations=log_activations)
 
         # Changes in properties from Layer - note this is implicitly multi-dimensional
