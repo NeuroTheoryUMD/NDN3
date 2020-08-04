@@ -272,7 +272,10 @@ class Layer(object):
                 w_p = self.weights_var
 
             if self.normalize_weights > 0:
-                w_pn = tf.nn.l2_normalize(w_p, axis=0)
+                if self.normalize_weights == 2:
+                    w_pn = tf.nn.l2_normalize(w_p) * self.num_filters
+                else:   
+                    w_pn = tf.nn.l2_normalize(w_p, axis=0)
             elif self.normalize_weights < 0:
                 w_pn = tf.divide(w_p, tf.maximum(tf.norm(w_p, axis=0), 1))
             else:
