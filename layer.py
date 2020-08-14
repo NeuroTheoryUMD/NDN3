@@ -200,7 +200,12 @@ class Layer(object):
         if pos_constraint is not None:
             init_weights = np.maximum(init_weights, 0)
         if normalize_weights > 0:
-            init_weights = sk_normalize(init_weights, axis=0)
+            if normalize_weights == 2:
+                init_weights = self.num_filters * np.divide( 
+                    init_weights, 
+                    np.sqrt(np.sum(np.square(init_weights))) ) 
+            else:
+                init_weights = sk_normalize(init_weights, axis=0)
         elif normalize_weights < 0:
             init_weights = np.divide(init_weights, np.maximum(np.sqrt(np.sum(np.square(init_weights), axis=0)), 1))
 
@@ -390,7 +395,10 @@ class Layer(object):
                 w_p = self.weights_var
 
             if self.normalize_weights > 0:
-                w_pn = tf.nn.l2_normalize(w_p, axis=0)
+                if self.normalize_weights == 2:
+                    w_pn = tf.nn.l2_normalize(w_p)
+                else:
+                    w_pn = tf.nn.l2_normalize(w_p, axis=0)
             elif self.normalize_weights < 0:
                 w_pn = tf.divide(w_p, tf.maximum(tf.norm(w_p, axis=0), 1))
             else:
