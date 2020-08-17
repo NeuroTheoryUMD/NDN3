@@ -11,6 +11,7 @@ import shutil
 import numpy as np
 import tensorflow as tf
 
+from .regularization import OutputRegularization
 from .ffnetwork import FFNetwork
 from .ffnetwork import SideNetwork
 ## will want to import network type here (SamplerNetwork?)
@@ -148,6 +149,7 @@ class NDN(object):
         self.output_sizes = [0] * len(ffnet_out)
         self.noise_dist = noise_dist
         self.tf_seed = tf_seed
+        self.output_reg = []
 
         # The seeds need to be set here as well (before weights get initiated as part of ._define_network)
         # ..because otherwise they only get applied in ._build_graph which happens only after ._define_network
@@ -458,8 +460,19 @@ class NDN(object):
             for nn in range(self.num_networks):
                 reg_costs.append(self.networks[nn].define_regularization_loss())
         self.cost_reg = tf.add_n(reg_costs)
+        
+        
 
-        self.cost_penalized = tf.add(self.cost, self.cost_reg)
+        # output regularization
+        if len(self.output_reg)==0:
+            self.cost_penalized = tf.add(self.cost, self.cost_reg)
+        else:
+            reg_costs = []
+            with tf.name_scope('output_regularization'):
+                self.cost_output_reg = self.calc_output_reg()     
+            self.cost_penalized = tf.add_n([self.cost, self.cost_reg, self.cost_output_reg])
+            
+        
 
         # save summary of cost
         # with tf.variable_scope('summaries'):
@@ -489,6 +502,10 @@ class NDN(object):
         with self.graph.as_default():
             for nn in range(self.num_networks):
                 self.networks[nn].assign_reg_vals(sess)
+
+            for nn in range(len(self.output_reg)):
+                self.output_reg[nn].assign_reg_vals(sess)
+
 
     def _build_fit_variable_list(self, fit_parameter_list):
         """Generates variable list to fit if argument is not none.
@@ -902,6 +919,7 @@ class NDN(object):
             t0 = 0  # default unless there is self.time_spread
 
             for batch_test in range(num_batches_test):
+                
 
                 if self.time_spread is None:
                     indx_beg = batch_test * self.batch_size
@@ -917,6 +935,8 @@ class NDN(object):
                 if indx_end > data_indxs.shape[0]:
                     indx_end = data_indxs.shape[0]
 
+                # print("batch %d, t0: %d" %(batch_test, t0))
+                
                 batch_indxs_test = data_indxs[indx_beg:indx_end]
                 if self.data_pipe_type == 'data_as_var':
                     feed_dict = {self.indices: batch_indxs_test}
@@ -984,6 +1004,25 @@ class NDN(object):
 
         return reg_dict
 
+    def initialize_output_reg( self, network_target=None, layer_target=None, reg_vals=None):
+        
+        # make checks
+        num_outputs = np.prod(self.networks[network_target].layers[layer_target].output_dims)
+        
+        self.output_reg.append(OutputRegularization(input_dims=[self.batch_size, 1, 1],
+            network_target=network_target,layer_target=layer_target, vals=reg_vals))
+
+    def calc_output_reg( self ):
+        reg_list = []
+        for rr in range(len(self.output_reg)):
+            ntarg = self.output_reg[rr].network_target
+            ltarg = self.output_reg[rr].layer_target
+            reg_list.append( self.output_reg[rr].define_reg_loss(self.networks[ntarg].layers[ltarg].outputs) )
+        return tf.add_n(reg_list)
+
+
+
+
     def get_weights( self, layer_target, ffnet_target=0, w_range=None, reshape=False ):
         """Return a matrix with the desired weights from the NDN. Can select subset of weights using
         w_range (default is return all), and can also reshape based on the filter dims (setting reshape=True)."""
@@ -1002,6 +1041,9 @@ class NDN(object):
         target.data_pipe_type = self.data_pipe_type
         target.batch_size = self.batch_size
         target.time_spread = self.time_spread
+
+        for nn in range(len(self.output_reg)):
+            target.output_reg.append(self.output_reg[nn].reg_copy())
 
         # Copy all the parameters
         for nn in range(self.num_networks):
