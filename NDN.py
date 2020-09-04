@@ -711,6 +711,9 @@ class NDN(object):
                 positive if better than the null-model.
         """
 
+        if blocks is not None:
+            print('blocks not implemented yet. should be pretty easy though.')
+
         if preds is not None:
             if input_data is not None:
                 print( 'preds provided, so ignoring input_data')
@@ -721,8 +724,12 @@ class NDN(object):
         if data_indxs is None:
             data_indxs = range(self.time_spread, preds.shape[0])
 
-        p = preds[data_indxs, :]
-        R = output_data[data_indxs, :]
+        if data_filters is not None:
+            R = np.multiply( output_data[data_indxs, :], data_filters[data_indxs, :] )
+            p = np.multiply( preds[data_indxs, :], data_filters[data_indxs, :] )
+        else:
+            R = output_data[data_indxs, :]
+            p = preds[data_indxs, :]
 
         if self.noise_dist == 'gaussian':
             unit_cost = np.sum( np.square(R-p), axis=0 )
@@ -742,8 +749,14 @@ class NDN(object):
         else:
             TypeError('Cost function not supported.')
 
-        return np.divide( unit_cost, cost_norm)
+        ll_neuron = np.divide( unit_cost, cost_norm)
+        # note that ll_neuron is negative of the true log-likelihood,
+        # but get_null_ll is not (so + is actually subtraction)
+        if nulladjusted:
+            null_lls = self.get_null_ll( R[data_indxs, :] ) 
+            ll_neuron = -ll_neuron - null_lls
 
+        return ll_neuron
 
     def eval_models(self, input_data=None, output_data=None, data_indxs=None, blocks=None,
                     data_filters=None, nulladjusted=False, use_gpu=False, use_dropout=False):
