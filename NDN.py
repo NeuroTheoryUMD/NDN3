@@ -242,8 +242,10 @@ class NDN(object):
                 if self.time_spread is None:
                     self.time_spread = self.networks[nn].time_spread
                 else:
-                    # For now assume serial procuessing (fix latter for parallel?)
-                    self.time_spread += self.networks[nn].time_spread
+                    # For now assume parallel procuessing 
+                    if (self.time_spread > 0) and (self.networks[nn].time_spread > 0):
+                        print( 'Warning: using parallel (max) of time_spread from multiple FFnetorks. Be sure to check.')
+                    self.time_spread = np.maximum(self.time_spread, self.networks[nn].time_spread)
 
         # Assemble outputs
         for nn in range(len(self.ffnet_out)):
@@ -461,8 +463,6 @@ class NDN(object):
                 reg_costs.append(self.networks[nn].define_regularization_loss())
         self.cost_reg = tf.add_n(reg_costs)
         
-        
-
         # output regularization
         if len(self.output_reg)==0:
             self.cost_penalized = tf.add(self.cost, self.cost_reg)
@@ -472,8 +472,6 @@ class NDN(object):
                 self.cost_output_reg = self.calc_output_reg()     
             self.cost_penalized = tf.add_n([self.cost, self.cost_reg, self.cost_output_reg])
             
-        
-
         # save summary of cost
         # with tf.variable_scope('summaries'):
         tf.summary.scalar('cost', self.cost)
@@ -683,9 +681,79 @@ class NDN(object):
         return cost_tr
     # END get_LL
 
+    def eval_preds(self, input_data=None, preds=None, 
+                    output_data=None, data_indxs=None, blocks=None,
+                    data_filters=None, nulladjusted=False, use_gpu=False, use_dropout=False):
+        """Get cost for each output neuron without regularization terms
+
+        Args:
+            input_data (time x input_dim numpy array): input to model. Don't need if passing 'preds' only
+            preds (time x output_dim numpy array): predictions calculated from model, as alternative to
+                putting in input_data. This has to have same size as output_data
+            output_data (time x output_dim numpy array): desired output of model
+            data_indxs (numpy array, optional): indexes of data to use in
+                calculating forward pass; if not supplied, all data is used
+            data_filters (time x output_dim numpy array, optional): array of zeros and ones showing
+                where output_data is valid
+            blocks (num_blocks x 2): if data is broken into blocks, then corresponds to start- and
+                end-indices of each block in data. If set, then interpret data_indxs as numbering
+                the blocks to use (rather than indices themselves)
+            nulladjusted (bool): subtracts the log-likelihood of a "null" model that has constant
+                [mean] firing rate
+            use_gpu (boolean, default False): forces eval_preds on CPU (to avoid potential memory
+                issues on GPU that lead to kernel crashing)
+            use_dropout (boolean, default False): whether to use dropout settings
+
+        Returns:
+            numpy array: value of log-likelihood for each unit in model. For
+                Poisson noise distributions, if not null-adjusted, this will
+                return the *negative* log-likelihood. Null-adjusted will be
+                positive if better than the null-model.
+        """
+
+        if preds is not None:
+            if input_data is not None:
+                print( 'preds provided, so ignoring input_data')
+        else:
+            assert input_data is not None, 'Must provide either input_data or preds.'
+            preds = self.generate_prediction(input_data = input_data, use_gpu=use_gpu)
+
+        if data_indxs is None:
+            data_indxs = range(self.time_spread, preds.shape[0])
+
+        p = preds[data_indxs, :]
+        R = output_data[data_indxs, :]
+
+        if self.noise_dist == 'gaussian':
+            unit_cost = np.sum( np.square(R-p), axis=0 )
+            # unit_cost.append(tf.reduce_sum(tf.square(data_out-pred), axis=0)) # unnormalized
+            cost_norm = len(data_indxs)
+
+        elif self.noise_dist == 'poisson':
+            unit_cost = -np.sum(
+                            np.multiply(R, np.log(self._log_min + p)) - p,
+                            axis=0)
+            cost_norm = np.maximum(np.sum(R, axis=0), 1e-8)
+        
+        elif self.noise_dist == 'bernoulli':
+            unit_cost = np.sum( np.multiply( 1-R, p ) + np.log(1 + np.exp(-p)), axis = 0)
+            #tf.nn.sigmoid_cross_entropy_with_logits(labels=data_out, logits=pred), axis=0))
+            cost_norm = np.maximum(np.sum(R, axis=0), 1e-8)
+        else:
+            TypeError('Cost function not supported.')
+
+        return np.divide( unit_cost, cost_norm)
+
+
     def eval_models(self, input_data=None, output_data=None, data_indxs=None, blocks=None,
                     data_filters=None, nulladjusted=False, use_gpu=False, use_dropout=False):
         """Get cost for each output neuron without regularization terms
+
+        Note: this uses the NDN._define_loss explicitly, so should be an identical calulation as 
+        that performed within the fitting blocks. However, if self.time_spread > 0, _define_loss 
+        will ignore time points at the beginning of each batch. The alternative is to use eval_pred, 
+        (which will use self.generate_prediction to generate seemless prediction) and then will apply
+        the same cost-functions to that.
 
         Args:
             input_data (time x input_dim numpy array): input to model
@@ -742,7 +810,7 @@ class NDN(object):
             if self.time_spread > 0:
                 block_lists, mod_df, _ = process_blocks(blocks, mod_df, skip=self.time_spread)
             else:  # enter default time spread in between blocks
-                print("WARNING: no time-spread entered for using blocks. Setting to 20.")
+                print("WARNING: no time-spread entered for using blocks. Setting to 12.")
                 self.time_spread = 12
             # data_indxs is number of blocks    
             num_batches_test = len(data_indxs)
@@ -900,9 +968,10 @@ class NDN(object):
         else:
             batch_size_save = None
 
-        # Get prediction for complete range
-        #num_batches_test = data_indxs.shape[0] // self.batch_size
-        num_batches_test = np.ceil(data_indxs.shape[0]/self.batch_size).astype(int)
+        # Calculate number of batches to extend over whole experiment
+        bsize_eff = self.batch_size - self.time_spread
+        assert bsize_eff > 0, 'Batch size is too small given time_spread.'
+        num_batches_test = np.ceil(data_indxs.shape[0]/bsize_eff).astype(int)
 
         # Place graph operations on CPU
         if not use_gpu:
@@ -922,22 +991,22 @@ class NDN(object):
                 
 
                 if self.time_spread is None:
-                    indx_beg = batch_test * self.batch_size
+                    indx_beg = batch_test * bsize_eff
                 else:
-                    if self.time_spread < batch_test * self.batch_size:
-                        indx_beg = batch_test * self.batch_size - self.time_spread
+                    if self.time_spread < batch_test * bsize_eff:
+                        indx_beg = batch_test * bsize_eff - self.time_spread
                         t0 = self.time_spread
                     else:
                         indx_beg = 0
-                        t0 = batch_test * self.batch_size
+                        t0 = batch_test * bsize_eff
 
-                indx_end = (batch_test + 1) * self.batch_size
+                indx_end = (batch_test + 1) * bsize_eff
                 if indx_end > data_indxs.shape[0]:
                     indx_end = data_indxs.shape[0]
 
                 # print("batch %d, t0: %d" %(batch_test, t0))
                 
-                batch_indxs_test = data_indxs[indx_beg:indx_end]
+                batch_indxs_test = data_indxs[indx_beg:indx_end] # this should always = self.batch_size
                 if self.data_pipe_type == 'data_as_var':
                     feed_dict = {self.indices: batch_indxs_test}
                 elif self.data_pipe_type == 'feed_dict':
