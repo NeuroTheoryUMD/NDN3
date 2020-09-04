@@ -115,7 +115,7 @@ class NDN(object):
         # end from old network.py
 
         self.batch_size = batch_size
-        self.time_spread = None
+        self.time_spread = 0
 
         # Set network_list
         if not isinstance(network_list, list):
@@ -239,12 +239,12 @@ class NDN(object):
             
             # Track temporal spread
             if self.networks[nn].time_spread > 0:
-                if self.time_spread is None:
+                if self.time_spread == 0:
                     self.time_spread = self.networks[nn].time_spread
                 else:
                     # For now assume parallel procuessing 
                     if (self.time_spread > 0) and (self.networks[nn].time_spread > 0):
-                        print( 'Warning: using parallel (max) of time_spread from multiple FFnetorks. Be sure to check.')
+                        print( 'Warning: using parallel (max) of time_spread from multiple FFnetworks. Be sure to check.')
                     self.time_spread = np.maximum(self.time_spread, self.networks[nn].time_spread)
 
         # Assemble outputs
@@ -381,12 +381,8 @@ class NDN(object):
         self.cost_iter = [] ###
         unit_cost = []
         for nn in range(len(self.ffnet_out)):
-            if self.time_spread is None:
-                time_spread = 0
-                #data_out = self.data_out_batch[nn]
-            else:
-                time_spread = self.time_spread
-                #data_out = tf.slice(self.data_out_batch[nn], [self.time_spread, 0], [-1, -1])
+            time_spread = self.time_spread
+            #data_out = tf.slice(self.data_out_batch[nn], [self.time_spread, 0], [-1, -1])
 
             if self.filter_data:
                 # this will zero out predictions where there is no data, matching Robs here
@@ -727,9 +723,11 @@ class NDN(object):
         if data_filters is not None:
             R = np.multiply( output_data[data_indxs, :], data_filters[data_indxs, :] )
             p = np.multiply( preds[data_indxs, :], data_filters[data_indxs, :] )
+            dfs = data_filters[data_indxs, :]
         else:
             R = output_data[data_indxs, :]
             p = preds[data_indxs, :]
+            dfs = None
 
         if self.noise_dist == 'gaussian':
             unit_cost = np.sum( np.square(R-p), axis=0 )
@@ -753,7 +751,7 @@ class NDN(object):
         # note that ll_neuron is negative of the true log-likelihood,
         # but get_null_ll is not (so + is actually subtraction)
         if nulladjusted:
-            null_lls = self.get_null_ll( R[data_indxs, :] ) 
+            null_lls = self.get_null_ll( R, dfs ) 
             ll_neuron = -ll_neuron - null_lls
 
         return ll_neuron
@@ -798,10 +796,7 @@ class NDN(object):
             assert blocks is None, 'Cannot use blocks: variable batch size not permitted.'
             
         # arrange parameters that affect data processing
-        if self.time_spread is None:
-            time_spread = 0
-        else:
-            time_spread = self.time_spread
+        time_spread = self.time_spread
 
         if blocks is None:
             if data_indxs is None:
@@ -1003,7 +998,7 @@ class NDN(object):
             for batch_test in range(num_batches_test):
                 
 
-                if self.time_spread is None:
+                if self.time_spread == 0:
                     indx_beg = batch_test * bsize_eff
                 else:
                     if self.time_spread < batch_test * bsize_eff:
@@ -1756,7 +1751,7 @@ class NDN(object):
         best_cost = float('Inf')
         chkpted = False
 
-        if self.time_spread is not None:
+        if self.time_spread > 0:
             # get number of batches and their order for train indxs
             batch_order = np.arange(num_batches_tr)
 
@@ -1764,7 +1759,7 @@ class NDN(object):
         for epoch in range(epochs_training):
 
             # shuffle data before each pass
-            if self.time_spread is None:
+            if self.time_spread == 0:
                 train_indxs_perm = np.random.permutation(train_indxs)
             else:
                 batch_order_perm = np.random.permutation(batch_order)
@@ -1774,7 +1769,7 @@ class NDN(object):
 
                 if (self.data_pipe_type == 'data_as_var') or (self.data_pipe_type == 'feed_dict'):
                     # get training indices for this batch
-                    if self.time_spread is None:
+                    if self.time_spread == 0:
                         batch_indxs = train_indxs_perm[batch * opt_params['batch_size']:
                                                        (batch + 1) * opt_params['batch_size']]
                     else:
