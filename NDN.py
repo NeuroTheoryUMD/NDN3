@@ -909,7 +909,7 @@ class NDN(object):
                     #unit_norms = np.multiply(deepcopy(self.poisson_unit_norm), len(data_indxs))
                     #np.sum(mod_df[nn][data_indxs, :], axis=0)) # default only normalized by total time vs. amt of data
             ll_neuron.append(np.divide(np.squeeze(unit_cost[nn]), np.maximum(unit_norms, 1)))   
-        
+
         if nulladjusted:
             # note that ll_neuron is negative of the true log-likelihood,
             # but get_null_ll is not (so + is actually subtraction)
@@ -1160,13 +1160,13 @@ class NDN(object):
 
         if self.noise_dist == 'gaussian':
             # In this case, LLnull is just var of data that exists
+            print( 'Warning: null-LL is not clearly useful for Gaussian noise distributions.' )
             if data_filters is None:
                 null_lls = np.var(robs, axis=0)
             else:
-                rbars = np.divide(np.multiply(data_filters, np.sum(robs, axis=0), np.sum(data_filters, axis=0)))
                 rbars = np.divide(np.sum(np.multiply(data_filters, robs), axis=0), 
-                                    np.maximum((np.sum(data_filters, axis=0), 1)))
-                rbars = np.divide(np.multiply(data_filters, np.sum(robs, axis=0)), np.sum(data_filters, axis=0)) # Correct IMHO
+                            np.maximum(np.sum(data_filters, axis=0), 1)  )
+                #rbars = np.divide(np.multiply(data_filters, np.sum(robs, axis=0)), np.sum(data_filters, axis=0)) # Correct IMHO
 
                 null_lls = np.divide(np.sum(np.square(np.add(robs, -rbars))), np.sum(data_filters, axis=0))
 
