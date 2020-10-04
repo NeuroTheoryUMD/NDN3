@@ -23,6 +23,7 @@ def data_loader( filename ):
     stim = np.expand_dims(np.multiply(TRsig[:,0], TRstr[:,0]), axis=1)  # stim strength and direction combined
     stimL = matdat['stimL']
     stimR = matdat['stimR']
+    Xsacc = matdat['Xsacc']
     blks = matdat['blks']
     dislist = matdat['disp_list'][:,0]
     #strlist = matdat['Dc_list'][:,0]
@@ -39,7 +40,7 @@ def data_loader( filename ):
     for cc in range(NC):
         CHname[cc] = matdat['CHnames'][0][cc][0]
     expt_info = {'exptname':filename, 'CHnames': CHname, 'blks':blks, 'dec_stims': decision_stims, 
-                 'DispList':dislist, 'StimList':stimlist, 
+                 'DispList': dislist, 'StimList': stimlist, 'Xsacc': Xsacc,
                  'stimL': stimL, 'stimR':stimR, 'Robs':Robs, 'used_inds': used_inds}
     
     twin = range(25,Nframes)
