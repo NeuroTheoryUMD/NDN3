@@ -798,7 +798,7 @@ class DiffOfGaussiansLayer(Layer):
             weights = tf.reshape(self.weights_var, [8, num_filters])
             
             gm_np = self.get_DoG(weights, W, H, num_filters)
-            gm = tf.expand_dims(gm_np, 2) # W, H, 1, num_filters
+            gm = tf.expand_dims(gm_np, 2) # H, W, 1, num_filters
 
             gaussed = tf.multiply(shaped_input, gm)
 
@@ -973,7 +973,7 @@ class ConvDiffOfGaussiansLayer(DiffOfGaussiansLayer):
             weights = tf.reshape(self.weights_var, [8, num_filters])
             
             gm_np = self.get_DoG(weights, W, H, num_filters)
-            gm = tf.expand_dims(gm_np, 2) # W, H, 1, num_filters
+            gm = tf.expand_dims(gm_np, 2) # H, W, 1, num_filters
 
             # Reshape weights (4:D: [filter_height, filter_width, in_channels, out_channels])
             conv_filter_dims = [self.filter_dims[2], self.filter_dims[1], self.filter_dims[0],
