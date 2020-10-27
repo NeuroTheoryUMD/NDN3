@@ -430,9 +430,14 @@ class Layer(object):
     
         ws = deepcopy(self.weights[:, w_range])
         if reshape:
-            return np.reshape( ws, self.filter_dims + [len(w_range)])
+            if self.filter_dims[2] > 1:
+                rdims = [self.filter_dims[2], self.filter_dims[1], self.filter_dims[0], len(w_range)]
+            else:
+                rdims = [self.filter_dims[1], self.filter_dims[0], len(w_range)]
+            return np.reshape( ws, rdims)
         else:
             return ws
+    # END NDN.get_weights
 
 
 class ConvLayer(Layer):
