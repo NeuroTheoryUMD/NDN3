@@ -639,6 +639,8 @@ class UnitRegularization(Regularization):
         # check inputs
         if reg_type not in self._allowed_reg_types:
             raise ValueError('Invalid regularization type ''%s''' % reg_type)
+        if reg_vals is None:
+            return
         # Convert reg_vals to array nomatter what
         reg_vals = np.array(reg_vals, dtype='float32')
         if len(reg_vals.shape) == 0: # then single number

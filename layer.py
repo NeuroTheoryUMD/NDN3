@@ -418,6 +418,15 @@ class Layer(object):
         """Wrapper function for returning regularization penalty dict"""
         return self.reg.get_reg_penalty(sess)
 
+    def convert_to_unit_regularization( self ):
+        """Initializes Unit-based regularization using current values of Regularization object"""
+
+        self.reg = UnitRegularization(
+            input_dims=self.input_dims,
+            num_outputs=self.reg.num_outputs, 
+            vals=self.reg.vals)
+    # END Layer.convert_to_unit_regularization
+
     def get_weights( self, w_range=None, reshape=False ):
         """Return a matrix with the desired weights from the NDN. Can select subset of weights using
         w_range (default is return all), and can also reshape based on the filter dims (setting reshape=True).

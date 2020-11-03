@@ -13,7 +13,7 @@ from sklearn.preprocessing import normalize as sk_normalize
 
 
 ################
-def plot_tfilters( ndnmod, kts = None, to_plot=True  ):
+def plot_tfilters( ndnmod, kts = None, ffnet = 0, to_plot=True  ):
     """Can pass in weights to relevant layer in first argument, as well as NDN model.
     Will use default tkerns variable, but this can also be passed in as kts argument."""
 
@@ -22,7 +22,7 @@ def plot_tfilters( ndnmod, kts = None, to_plot=True  ):
     if type(ndnmod) is np.ndarray:  # then passing in filters and need more information
         ws = deepcopy(ndnmod)     
     else:        
-        ws = deepcopy(ndnmod.networks[0].layers[0].weights)
+        ws = deepcopy(ndnmod.networks[ffnet].layers[0].weights)
     
     if len(ws.shape) > 2:
         nx, ntk2, numcells = ws.shape
