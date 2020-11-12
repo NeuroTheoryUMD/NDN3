@@ -271,6 +271,151 @@ def plot_internal_weights(ws, num_inh=None):
     plt.imshow(ws_play, cmap='bwr', vmin=-m, vmax=m)
 
 
+## ADDITIONAL REGULARIZATION FUNCTIONS
+def unit_reg_test(
+    ndn_mod=None, input_data=None, output_data=None, train_indxs=None, test_indxs=None, data_filters=None, 
+    reg_type=None, ffnet_targets=[0], layer_targets=[0], reg_vals=None,
+    fit_variables=None, opt_params=None, learning_alg='lbfgs', to_plot=True ):
+
+    if reg_vals is None:
+        reg_vals = [1e-6, 1e-4, 0.001, 0.01, 0.1, 1, 10]
+    assert ndn_mod is not None, 'Must include model.'
+    
+    if not isinstance(ffnet_targets, list):
+        ffnet_targets = [ffnet_targets]
+    if not isinstance(layer_targets, list):
+        layer_targets = [layer_targets]
+        
+    Nreg = len(reg_vals)
+    NC = Robs.shape[1]
+    
+    LLmat = np.zeros([Nreg, NC])
+    reg_mods = []
+    for nn in range(Nreg):
+        ndn_iter = ndn_mod.copy_model()
+        
+        for aa in range(len(ffnet_targets)):
+            for bb in range(len(layer_targets)):
+                ndn_iter.set_regularization(
+                    reg_type, reg_vals[nn], 
+                    ffnet_target=ffnet_targets[aa], layer_target=layer_targets[bb])
+                
+        _=ndn_iter.train( 
+            input_data=input_data, output_data=output_data, train_indxs=train_indxs, test_indxs=test_indxs, 
+            data_filters=data_filters, fit_variables=fit_variables,
+            opt_params=opt_params, learning_alg=learning_alg, silent=True)
+        LLmat[nn, :] = ndn_iter.eval_models(
+            input_data=input_data, output_data=output_data, data_indxs=test_indxs, data_filters=data_filters)
+        reg_mods.append(ndn_iter.copy_model())
+        print(nn, reg_vals[nn], np.mean(LLmat[nn, :]))
+    
+    # Pick optimal vals
+    opt_pos = np.argmin(LLmat,axis=0)
+    opt_vals = np.zeros(NC)
+    for cc in range(NC):
+        opt_vals[cc] = reg_vals[opt_pos[cc]]
+        
+    if to_plot:
+        num_rows = NC//8 + 1
+        if NC < 8:
+            num_col = NC
+        else:
+            num_col = 8
+        DU.subplot_setup(num_rows, num_col)
+        for cc in range(NC):
+            plt.subplot(num_rows, num_col, cc+1)
+            plt.plot(LLmat[:,cc],'b')
+            plt.plot(LLmat[:,cc],'b.')
+            plt.plot([opt_pos[cc], opt_pos[cc]], plt.ylim(),'k--')
+            plt.title('cell '+str(cc+1))
+        plt.show()
+
+    reg_results = {
+        'reg_type': reg_type,
+        'rvals': reg_vals,
+        'opt_vals': opt_vals,
+        'targets': [ffnet_targets, layer_targets],
+        'LLmat': LLmat, 
+        'reg_models': reg_mods}
+    return reg_results
+
+
+def unit_assign_reg( ndn_mod, reg_results ):
+    
+    new_ndn = ndn_mod.copy_model()
+    Ntar = reg_results['targets'][0]
+    Ltar = reg_results['targets'][1]
+    rtype = reg_results['reg_type']
+    for aa in range(len(Ntar)):
+        for bb in range(len(Ltar)):
+            new_ndn.networks[aa].layers[bb].convert_to_unit_regularization()
+            new_ndn.networks[aa].layers[bb].reg.vals[rtype] = deepcopy(reg_results['opt_vals'])
+    return new_ndn
+
+
+def plot_2dweights( w, input_dims=None, num_inh=0):
+    """w can be one dimension (in which case input_dims is required) or already shaped. """
+
+    if input_dims is not None:
+        w = np.reshape(w, [input_dims[1], input_dims[0]])
+    else:
+        input_dims = [w.shape[1], w.shape[0]]
+
+    num_exc = input_dims[0]-num_inh
+    w = np.divide(w, np.max(np.abs(w)))
+
+    fig, ax = plt.subplots(1)
+
+    if num_inh > 0:
+        w[:, num_exc:] = np.multiply(w[:, num_exc:], -1)
+        plt.imshow(w, interpolation='none', cmap='bwr', vmin=-1, vmax=1)
+    else:
+        plt.imshow(w, aspect='auto', interpolation='none', cmap='Greys', vmin=0, vmax=1)
+    if num_inh > 0:
+        plt.plot(np.multiply([1, 1], num_exc-0.5), [-0.5, input_dims[1]-0.5], 'k')
+    ax.set_yticklabels([])
+    ax.set_xticklabels([])
+
+
+## SPATIAL MEASUREMENT FUNCTIONS
+def spatial_profile_info(xprofile):
+    """Calculate the mean and standard deviation of xprofile along one dimension"""
+    # Calculate mean of filter
+
+    if isinstance(xprofile, list):
+        k = np.square(np.array(xprofile))
+    else:
+        k = np.square(deepcopy(xprofile))
+
+    NX = xprofile.shape[0]
+
+    nrms = np.maximum(np.sum(k), 1e-10)
+    mn_pos = np.divide(np.sum(np.multiply(k, range(NX))), nrms)
+    xs = np.array([range(NX)] * np.ones([NX, 1])) - np.array([mn_pos] * np.ones([NX, 1]))
+    stdev = np.sqrt(np.divide(np.sum(np.multiply(k, np.square(xs))), nrms))
+    return mn_pos, stdev
+# END spatial_profile_info
+
+
+def spatial_spread(filters, axis=0):
+    """Calculate the spatial spread of a list of filters along one dimension"""
+
+    # Calculate mean of filter
+    k = np.square(deepcopy(filters))
+    if axis > 0:
+        k = np.transpose(k)
+    NX, NF = filters.shape
+
+    nrms = np.maximum(np.sum(k,axis=0), 1e-10)
+    mn_pos = np.divide(np.sum(np.multiply(np.transpose(k), range(NX)), axis=1), nrms)
+    xs = np.array([range(NX)] * np.ones([NF, 1])) - np.transpose(np.array([mn_pos] * np.ones([NX, 1])))
+    stdevs = np.sqrt(np.divide(np.sum(np.multiply(np.transpose(k), np.square(xs)), axis=1), nrms))
+
+    return stdevs
+# END spatial_spread
+
+
+## SIDE/SCAFFOLD NETWORK ANALYSIS to understand solutions
 def side_network_analyze(side_ndn, cell_to_plot=None, plot_aspect='auto'):
     """
     Applies to NDN with a side network (conv or non-conv. It will divide up the weights
@@ -363,69 +508,6 @@ def side_network_analyze(side_ndn, cell_to_plot=None, plot_aspect='auto'):
     return ws
 
 
-def plot_2dweights( w, input_dims=None, num_inh=0):
-    """w can be one dimension (in which case input_dims is required) or already shaped. """
-
-    if input_dims is not None:
-        w = np.reshape(w, [input_dims[1], input_dims[0]])
-    else:
-        input_dims = [w.shape[1], w.shape[0]]
-
-    num_exc = input_dims[0]-num_inh
-    w = np.divide(w, np.max(np.abs(w)))
-
-    fig, ax = plt.subplots(1)
-
-    if num_inh > 0:
-        w[:, num_exc:] = np.multiply(w[:, num_exc:], -1)
-        plt.imshow(w, interpolation='none', cmap='bwr', vmin=-1, vmax=1)
-    else:
-        plt.imshow(w, aspect='auto', interpolation='none', cmap='Greys', vmin=0, vmax=1)
-    if num_inh > 0:
-        plt.plot(np.multiply([1, 1], num_exc-0.5), [-0.5, input_dims[1]-0.5], 'k')
-    ax.set_yticklabels([])
-    ax.set_xticklabels([])
-
-
-## SPATIAL MEASUREMENT FUNCTIONS
-def spatial_profile_info(xprofile):
-    """Calculate the mean and standard deviation of xprofile along one dimension"""
-    # Calculate mean of filter
-
-    if isinstance(xprofile, list):
-        k = np.square(np.array(xprofile))
-    else:
-        k = np.square(deepcopy(xprofile))
-
-    NX = xprofile.shape[0]
-
-    nrms = np.maximum(np.sum(k), 1e-10)
-    mn_pos = np.divide(np.sum(np.multiply(k, range(NX))), nrms)
-    xs = np.array([range(NX)] * np.ones([NX, 1])) - np.array([mn_pos] * np.ones([NX, 1]))
-    stdev = np.sqrt(np.divide(np.sum(np.multiply(k, np.square(xs))), nrms))
-    return mn_pos, stdev
-# END spatial_profile_info
-
-
-def spatial_spread(filters, axis=0):
-    """Calculate the spatial spread of a list of filters along one dimension"""
-
-    # Calculate mean of filter
-    k = np.square(deepcopy(filters))
-    if axis > 0:
-        k = np.transpose(k)
-    NX, NF = filters.shape
-
-    nrms = np.maximum(np.sum(k,axis=0), 1e-10)
-    mn_pos = np.divide(np.sum(np.multiply(np.transpose(k), range(NX)), axis=1), nrms)
-    xs = np.array([range(NX)] * np.ones([NF, 1])) - np.transpose(np.array([mn_pos] * np.ones([NX, 1])))
-    stdevs = np.sqrt(np.divide(np.sum(np.multiply(np.transpose(k), np.square(xs)), axis=1), nrms))
-
-    return stdevs
-# END spatial_spread
-
-
-## SIDE/SCAFFOLD NETWORK ANALYSIS to understand solutions
 def side_network_properties(side_ndn, norm_type=0):
     """Returns measurements of scaffold weights as they are distributed across layer"""
 
