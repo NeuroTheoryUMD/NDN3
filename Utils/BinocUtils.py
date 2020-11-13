@@ -39,7 +39,7 @@ def plot_tfilters( ndnmod, kts = None, ffnet = 0, to_plot=True  ):
         return ks
 
  
-def compute_binocular_filters(binoc_mod, to_plot=True):
+def compute_binocular_filters(binoc_mod, ffnet_n=0, to_plot=True):
 
     # Find binocular layer
     blayer, bnet = None, None
@@ -52,13 +52,13 @@ def compute_binocular_filters(binoc_mod, to_plot=True):
                     bnet, blayer = mm + 1, 0  # split in hierarchical network
     assert blayer is not None, 'biconv layer not found'
 
-    NF = binoc_mod.networks[0].layers[blayer].output_dims[0]
-    Nin = binoc_mod.networks[0].layers[blayer].input_dims[0]
-    NX = binoc_mod.networks[0].layers[blayer].filter_dims[1]
+    NF = binoc_mod.networks[ffnet_n].layers[blayer].output_dims[0]
+    Nin = binoc_mod.networks[ffnet_n].layers[blayer].input_dims[0]
+    NX = binoc_mod.networks[ffnet_n].layers[blayer].filter_dims[1]
     ks1 = DU.compute_spatiotemporal_filters(binoc_mod)
-    ws = np.reshape(binoc_mod.networks[0].layers[blayer].weights, [NX, Nin, NF])
-    num_lags = binoc_mod.networks[0].layers[0].input_dims[0]
-    if binoc_mod.networks[0].layers[0].filter_dims[1] > 1:  # then not temporal layer
+    ws = np.reshape(binoc_mod.networks[ffnet_n].layers[blayer].weights, [NX, Nin, NF])
+    num_lags = binoc_mod.networks[ffnet_n].layers[0].input_dims[0]
+    if binoc_mod.networks[ffnet_n].layers[0].filter_dims[1] > 1:  # then not temporal layer
         filter_dims = [num_lags, binoc_mod.networks[0].layers[0].filter_dims[1]]
     else:
         filter_dims = [num_lags, binoc_mod.networks[0].layers[1].filter_dims[1]]
@@ -77,10 +77,10 @@ def compute_binocular_filters(binoc_mod, to_plot=True):
         return bifilts
 
 
-def compute_binocular_tfilters(binoc_mod, kts=None, to_plot=True):
+def compute_binocular_tfilters(binoc_mod, kts=None, ffnet_n=0, to_plot=True):
 
     assert kts is not None, 'Must include tkerns.'
-    BFs = compute_binocular_filters( binoc_mod, to_plot=False)
+    BFs = compute_binocular_filters( binoc_mod, ffnet_n=ffnet_n, to_plot=False)
     Bks = np.transpose(np.tensordot(kts, BFs, axes=[1, 0]), (1,0,2))
 
     if to_plot:

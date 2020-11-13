@@ -2583,6 +2583,11 @@ class NDN(object):
             if type(data_filters) is not list:
                 data_filters = [data_filters]
             assert len(data_filters) == len(output_data), 'Number of data filters must match output data.'
+            # Make sure data_filters with one column has appropriate dimensionality
+            for nn in range(len(data_filters)):
+                if len(data_filters[nn].shape) == 1:
+                    data_filters[nn] = np.expand_dims(data_filters[nn], 1)
+
             # Also make sure Robs is zeroed out when data_filters is zero (for Poisson calc)
             output_data[nn] = np.multiply(output_data[nn], data_filters[nn])
         else:
