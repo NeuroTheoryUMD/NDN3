@@ -151,19 +151,33 @@ def predictive_power_binocular( Robs, pred, indxs=None, expl_var=None, Einfo=Non
 
 
 ###################### DISPARITY PROCESSING ######################
-def disparity_matrix( dispt, corrt ):
+def disparity_matrix( dispt, corrt=None ):
 
-    # last two colums will be uncorrelated (-1005) and blank (-1009)
+    dlist_raw = np.unique(dispt) 
+    if np.max(abs(dlist_raw)) > 100:
+        # last two colums will be uncorrelated (-1005) and blank (-1009)
+        dlist = dlist_raw[2:]  # this will exclude -1009 (blank) and -1005 (uncor)
+        num_blanks = 2
+    else:
+        dlist = dlist_raw
+        num_blanks = 0
 
-    dlist = np.unique(dispt)[2:]  # this will exclude -1009 (blank) and -1005 (uncor)
     ND = len(dlist)
+    if corrt is None:
+        dmat = np.zeros([dispt.shape[0], ND+num_blanks])
+    else:
+        dmat = np.zeros([dispt.shape[0], 2*ND+num_blanks])
 
-    dmat = np.zeros([dispt.shape[0], 2*ND+2])
-    dmat[np.where(dispt == -1009)[0], -1] = 1
-    dmat[np.where(dispt == -1005)[0], -2] = 1
+    if num_blanks > 0:
+        dmat[np.where(dispt == -1009)[0], -1] = 1
+        dmat[np.where(dispt == -1005)[0], -2] = 1
+
     for dd in range(len(dlist)):
-        dmat[np.where((dispt == dlist[dd]) & (corrt > 0))[0], dd] = 1
-        dmat[np.where((dispt == dlist[dd]) & (corrt < 0))[0], ND+dd] = 1
+        if corrt is None:
+            dmat[np.where(dispt == dlist[dd])[0], dd] = 1
+        else:
+            dmat[np.where((dispt == dlist[dd]) & (corrt > 0))[0], dd] = 1
+            dmat[np.where((dispt == dlist[dd]) & (corrt < 0))[0], ND+dd] = 1
 
     return dmat
 
