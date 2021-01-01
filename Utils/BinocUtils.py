@@ -199,7 +199,10 @@ def disparity_tuning( Einfo, r, used_inds=None, num_dlags=8, fr1or3=3, to_plot=F
     
     to_use = frs_valid[used_inds]
 
-    dmatN = dmat / np.mean(dmat[used_inds[to_use],:], axis=0) * np.mean(dmat[used_inds[to_use],:])
+    #dmatN = dmat / np.mean(dmat[used_inds[to_use],:], axis=0) * np.mean(dmat[used_inds[to_use],:])
+    dmatN = dmat / np.mean(dmat[used_inds[to_use],:], axis=0)  # will be stim rate
+    # if every stim resulted in 1 spk, the would be 1 as is
+    #nrms = np.mean(dmat[used_inds[to_use],:], axis=0) # number of stimuli of each type
     Xmat = NDNutils.create_time_embedding( dmatN[:, range(ND*2)], [num_dlags, 2*ND, 1])[used_inds, :]
     # uncorrelated response
     Umat = NDNutils.create_time_embedding( dmatN[:, [-2]], [num_dlags, 1, 1])[used_inds, :]
@@ -209,7 +212,9 @@ def disparity_tuning( Einfo, r, used_inds=None, num_dlags=8, fr1or3=3, to_plot=F
     #else: 
     #    resp = r
                           
-    Nspks = np.sum(resp[to_use, :], axis=0)
+    #Nspks = np.sum(resp[to_use, :], axis=0)
+    Nspks = len(to_use)  # this will end up being number of spikes associated with each stim 
+    # at different lags, divided by number of time points used. (i.e. prob of spike per bin)
     Dsta = np.reshape( Xmat[to_use, :].T@resp[to_use], [2*ND, num_dlags] ) / Nspks
     Usta = (Umat[to_use, :].T@resp[to_use])[:,0] / Nspks
     
@@ -218,8 +223,9 @@ def disparity_tuning( Einfo, r, used_inds=None, num_dlags=8, fr1or3=3, to_plot=F
     Dtun = np.reshape(Dsta[:, best_lag], [2, ND]).T
     uncor_resp = Usta[best_lag]
     
-    Dinfo = {'Dsta':Dsta, 'Dtun': Dtun, 'uncor_resp': uncor_resp, 'best_lag': best_lag, 'uncor_sta': Usta}
-                    
+    Dinfo = {'Dsta':Dsta, 'Dtun': Dtun, 'uncor_resp': uncor_resp, 
+            'best_lag': best_lag, 'uncor_sta': Usta, 'disp_list': Einfo['disp_list'][2:]}
+
     if to_plot:
         DU.subplot_setup(1,2)
         plt.subplot(1,2,1)
