@@ -21,10 +21,11 @@ def plot_norm( k, ksize = [36,20], cmap='gray', max_val=None):
     plt.imshow(kr, cmap=cmap, vmin=-max_val, vmax=max_val, aspect='auto')
 
 
-def subplot_setup(num_rows, num_cols, row_height=2):
+def subplot_setup(num_rows, num_cols, row_height=2, fighandle=False):
     fig, ax = plt.subplots(nrows=num_rows, ncols=num_cols)
     fig.set_size_inches(16, row_height*num_rows)
-
+    if fighandle is True:
+        return fig
 
 ## EXTRACT FILTER FROM NDN -- Various  functions
 def tbasis_recover_filters(ndn_mod, ffnet=None):
@@ -287,7 +288,7 @@ def unit_reg_test(
         layer_targets = [layer_targets]
         
     Nreg = len(reg_vals)
-    NC = Robs.shape[1]
+    NC = output_data.shape[1]
     
     LLmat = np.zeros([Nreg, NC])
     reg_mods = []
@@ -321,7 +322,7 @@ def unit_reg_test(
             num_col = NC
         else:
             num_col = 8
-        DU.subplot_setup(num_rows, num_col)
+        subplot_setup(num_rows, num_col)
         for cc in range(NC):
             plt.subplot(num_rows, num_col, cc+1)
             plt.plot(LLmat[:,cc],'b')
