@@ -39,7 +39,9 @@ def plot_tfilters( ndnmod, kts = None, ffnet = 0, to_plot=True  ):
         return ks
 
  
-def compute_binocular_filters(binoc_mod, ffnet_n=0, to_plot=True):
+def compute_binocular_filters(binoc_mod, ffnet_n=0, to_plot=True, num_space=36):
+    """using standard binocular model, compute filters. defaults to first ffnet and
+    num_space = 36. Set num_space=None to go to minimum given convolutional constraints"""
 
     # Find binocular layer
     blayer, bnet = None, None
@@ -62,7 +64,8 @@ def compute_binocular_filters(binoc_mod, ffnet_n=0, to_plot=True):
         filter_dims = [num_lags, binoc_mod.networks[0].layers[0].filter_dims[1]]
     else:
         filter_dims = [num_lags, binoc_mod.networks[0].layers[1].filter_dims[1]]
-    nfd = [filter_dims[0], filter_dims[1] + NX]
+    num_cspace = filter_dims[1] + NX
+    nfd = [filter_dims[0], num_cspace]
     # print(filter_dims, nfd)
     Bfilts = np.zeros(nfd + [NF, 2])
     for nn in range(NX):
@@ -70,17 +73,31 @@ def compute_binocular_filters(binoc_mod, ffnet_n=0, to_plot=True):
             np.matmul(ks1, ws[nn, range(Nin // 2), :]), [filter_dims[1], filter_dims[0], NF])
         Bfilts[:, np.add(range(filter_dims[1]), nn), :, 1] += np.reshape(
             np.matmul(ks1, ws[nn, range(Nin // 2, Nin), :]), [filter_dims[1], filter_dims[0], NF])
-    bifilts = np.concatenate((Bfilts[:, :, :, 0], Bfilts[:, :, :, 1]), axis=1)
+    
+    # Cast into desired num_space
+    if num_space is None:
+        num_space = num_cspace
+    if num_space == num_cspace:
+        BfiltsX = Bfilts
+    elif num_space > num_cspace:
+        BfiltsX = np.zeros([filter_dims[0], num_space, NF, 2])
+        padding = (num_space-num_cspace) // 2
+        BfiltsX[:, padding+np.arange(num_cspace), :, :] = Bfilts
+    else:  # crop
+        unpadding = (num_cspace-num_space) // 2
+        BfiltsX = Bfilts[:, unpadding+np.arange(num_space), :, :]
+
+    bifilts = np.concatenate((BfiltsX[:, :, :, 0], BfiltsX[:, :, :, 1]), axis=1)
     if to_plot:
         DU.plot_filters(filters=bifilts, flipxy=True)
     else:
         return bifilts
 
 
-def compute_binocular_tfilters(binoc_mod, kts=None, ffnet_n=0, to_plot=True):
+def compute_binocular_tfilters(binoc_mod, kts=None, ffnet_n=0, to_plot=True, num_space=36):
 
     assert kts is not None, 'Must include tkerns.'
-    BFs = compute_binocular_filters( binoc_mod, ffnet_n=ffnet_n, to_plot=False)
+    BFs = compute_binocular_filters( binoc_mod, ffnet_n=ffnet_n, to_plot=False, num_space=num_space )
     Bks = np.transpose(np.tensordot(kts, BFs, axes=[1, 0]), (1,0,2))
 
     if to_plot:
@@ -243,12 +260,14 @@ def disparity_tuning( Einfo, r, used_inds=None, num_dlags=8, fr1or3=3, to_plot=F
     return Dinfo
 
 
-def disparity_predictions( Einfo, resp, indxs=None, num_dlags=8, fr1or3=None, spiking=True, opt_params=None ):
+def disparity_predictions( 
+    Einfo, resp, 
+    indxs=None, num_dlags=8, fr1or3=None, spiking=True, rectified=True, opt_params=None ):
     """Calculates a prediction of the disparity (and timing) signals that can be inferred from the response
     by the disparity input alone. This puts a lower bound on how much disparity is driving the response, although
     practically speaking will generate the same disparity tuning curves.
     
-    Usage: Dpred, Tpred = disparity_predictions( Einfo, resp, indxs, num_dlags=8, spiking=True, opt_params=None )
+    Usage: Dpred, Tpred = disparity_predictions( Einfo, resp, indxs, num_dlags=8, spiking=True, rectified=True, opt_params=None )
 
     Inputs: Indices gives data range to fit to.
     Outputs: Dpred and Tpred will be length of entire experiment -- not just indxs
@@ -276,9 +295,15 @@ def disparity_predictions( Einfo, resp, indxs=None, num_dlags=8, fr1or3=None, sp
     dpar = NDNutils.ffnetwork_params( 
         xstim_n=[2], input_dims=[1,ND2-1,1, num_dlags], layer_sizes=[1], verbose=False,
         layer_types=['normal'], act_funcs=['lin'], reg_list={'d2xt':[None],'l1':[None]})
-    comb_parT = NDNutils.ffnetwork_params( 
-        xstim_n=None, ffnet_n=[0,1], layer_sizes=[1], verbose=False,
-        layer_types=['normal'], act_funcs=['softplus'])
+    if rectified:
+        comb_parT = NDNutils.ffnetwork_params( 
+            xstim_n=None, ffnet_n=[0,1], layer_sizes=[1], verbose=False,
+            layer_types=['normal'], act_funcs=['softplus'])
+    else:
+        comb_parT = NDNutils.ffnetwork_params( 
+            xstim_n=None, ffnet_n=[0,1], layer_sizes=[1], verbose=False,
+            layer_types=['normal'], act_funcs=['lin'])
+
     comb_par = deepcopy(comb_parT)
     comb_par['ffnet_n'] = [0,1,2]
 
