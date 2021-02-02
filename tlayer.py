@@ -39,7 +39,7 @@ class TLayer(Layer):
             pos_constraint=None,
             log_activations=False):
 
-        """Constructor for convLayer class
+        """Constructor for convLayer class (not rewritten)
 
         Args:
             scope (str): name scope for variables and operations in layer

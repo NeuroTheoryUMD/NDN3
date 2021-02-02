@@ -1976,7 +1976,7 @@ class AddLayer(Layer):
         input_dims = [num_input_streams, 1, 1]
 
         if normalize_weights < 0:
-            print('WARNING: maxnorm not implemented for SepLayer')
+            print('WARNING: maxnorm not implemented for AddLayer')
 
         super(AddLayer, self).__init__(
                 scope=scope,
@@ -2318,6 +2318,155 @@ class FilterLayer(Layer):
             tf.summary.histogram('act_pre', pre)
             tf.summary.histogram('act_post', post)
     # END FilterLayer._build_graph
+
+
+class ConvNormLayer(ConvLayer):
+    """Implementation of normalization by convolutional weights: each filter type is normalized
+    by its specific set of weights across filter_width. 
+    input_processing is about how to handle inputs contribution to normalization term. No worries if
+    they are already rectified, but otherwise
+        input_processing = 0: leaves as-is: can be negative for individual terms
+        input_processing = 1: rectified positive (default)
+        input_processing = -1: abs value
+        input_processing = 2: square
+
+    Attributes:
+        shift_spacing (int): stride of convolution operation
+        num_shifts (int): number of shifts in horizontal and vertical
+            directions for convolution operation
+
+    """
+    def __init__(
+            self,
+            scope=None,
+            #nlags=None,
+            input_dims=None,  # this can be a list up to 3-dimensions
+            filter_dims=None,  # this can be a list up to 3-dimensions
+            input_processing=0, 
+            shift_spacing=1,
+            normalize_weights=0,
+            weights_initializer='trunc_normal',
+            biases_initializer='zeros',
+            reg_initializer=None,
+            pos_constraint=None,
+            log_activations=False):
+        """Constructor for ConvLayer class
+
+        Args:
+            scope (str): name scope for variables and operations in layer
+            input_dims (int or list of ints): dimensions of input data
+            num_filters (int): number of convolutional filters in layer
+            filter_dims (int or list of ints): dimensions of input data
+            shift_spacing (int): stride of convolution operation
+            activation_func (str, optional): pointwise function applied to
+                output of affine transformation
+                ['relu'] | 'sigmoid' | 'tanh' | 'identity' | 'softplus' |
+                'elu' | 'quad'
+            normalize_weights (int): 1 to normalize weights 0 otherwise
+                [0] | 1
+            weights_initializer (str, optional): initializer for the weights
+                ['trunc_normal'] | 'normal' | 'zeros'
+            biases_initializer (str, optional): initializer for the biases
+                'trunc_normal' | 'normal' | ['zeros']
+            reg_initializer (dict, optional): see Regularizer docs for info
+            num_inh (int, optional): number of inhibitory units in layer
+            pos_constraint (None, valued): True to constrain layer weights to
+                be positive
+            log_activations (bool, optional): True to use tf.summary on layer
+                activations
+
+        Raises:
+            ValueError: If `pos_constraint` is `True`
+
+        """
+
+        num_filters = input_dims[0]
+
+        super(ConvNormLayer, self).__init__(
+            scope=scope,
+            #nlags=nlags,
+            input_dims=input_dims,
+            filter_dims=filter_dims,
+            output_dims=num_filters,  # Note difference from layer
+            activation_func='lin',
+            normalize_weights=normalize_weights,
+            weights_initializer=weights_initializer,
+            biases_initializer=biases_initializer,
+            reg_initializer=reg_initializer,
+            num_inh=0,
+            pos_constraint=pos_constraint,  # note difference from layer (not anymore)
+            log_activations=log_activations)
+
+        self.input_processing = input_processing
+        # output of filters
+        self.output_dims = deepcopy(self.input_dims)
+
+    # END ConvNormLayer.__init__
+
+    def build_graph(self, inputs, params_dict=None, batch_size=None, use_dropout=False):
+
+        assert params_dict is not None, 'Incorrect siLayer initialization.'
+        # Unfold siLayer-specific parameters for building graph
+
+        with tf.name_scope(self.scope):
+            self._define_layer_variables()
+
+            # Computation performed in the layer
+            # Reshape of inputs (4-D):
+            input_dims = [-1, self.input_dims[2], self.input_dims[1],
+                          self.input_dims[0]]
+            # this is reverse-order from Matlab:
+            # [space-2, space-1, lags, and num_examples]
+            shaped_input = tf.reshape(inputs, input_dims)
+            if self.input_processing == 0:
+                norm_input = shaped_input
+            elif self.input_processing == 1:
+                norm_input = tf.maximum(shaped_input, 0)
+            elif self.input_processing == 2:
+                norm_input = tf.square(shaped_input)
+            elif self.input_processing == -1:
+                norm_input = tf.abs(shaped_input)
+            else: 
+                print ('ConvNormLayer: invalid input_processing flag. ')
+
+            # Reshape weights (4:D:
+            conv_filter_dims = [self.filter_dims[2], self.filter_dims[1], self.filter_dims[0],
+                                self.num_filters]
+
+            if self.pos_constraint is not None:
+                w_p = tf.maximum(self.weights_var, 0.0)
+            else:
+                w_p = self.weights_var
+
+            if self.normalize_weights > 0:
+                w_pn = tf.nn.l2_normalize(w_p, axis=0)
+            else:
+                w_pn = w_p
+
+            ws_conv = tf.reshape(w_pn, conv_filter_dims)
+
+            # Make strides list
+            # check back later (this seems to not match with conv_filter_dims)
+            strides = [1, 1, 1, 1]
+            if conv_filter_dims[1] > 1:
+                strides[1] = self.shift_spacing
+            if conv_filter_dims[2] > 1:
+                strides[2] = self.shift_spacing
+
+            # Note that minimum norm term controls maximum gain -- 1 order of magnitude?
+            norm_term = np.maximum( tf.add(
+                tf.nn.conv2d(norm_input, ws_conv, strides, padding='SAME'), self.biases_var),
+                0.1)
+
+            post = tf.divide(shaped_input, norm_term)
+
+            self.outputs = tf.reshape(
+                post, [-1, self.num_filters * self.num_shifts[0] * self.num_shifts[1]])
+
+        if self.log:
+            #tf.summary.histogram('act_pre', pre)
+            tf.summary.histogram('act_post', post)
+    # END ConvNormLayer.build_graph
 
 
 class Dim0Layer(Layer):

@@ -325,7 +325,7 @@ class NDN(object):
                         # Assemble input streams -- implicitly along input axis 1
                         # (0 is T)
                         input_cat = None
-                        if self.network_list[nn]['xstim_n'] is not None:
+                        if self.network_list[nn]['xstim_n'] is not None:                            
                             for ii in self.network_list[nn]['xstim_n']:
                                 if input_cat is None:
                                     input_cat = self.data_in_batch[ii]
@@ -333,21 +333,39 @@ class NDN(object):
                                     input_cat = tf.concat(
                                         (input_cat, self.data_in_batch[ii]),
                                         axis=1)
+
                         if self.network_list[nn]['ffnet_n'] is not None:
                             for ii in self.network_list[nn]['ffnet_n']:
                                 if input_cat is None:
-                                    input_cat = \
-                                        self.networks[ii].layers[-1].outputs
+                                    input_cat = self.networks[ii].layers[-1].outputs
                                 else:
                                     input_cat = \
                                         tf.concat(
                                             (input_cat,
                                             self.networks[ii].layers[-1].outputs),
                                             axis=1)
+                            if len(self.network_list[nn]['ffnet_n']) > 1:
+                                # then check if other output dims, since would have to reshape to 
+                                # fold into filters
+                                idims = self.network_list[nn]['input_dims']
+                                if np.prod(idims[1:]) > 1:
+                                    print('Reordering convolutional concatenation.')
+                                    input_tmp = tf.reshape( 
+                                        input_cat,
+                                        [-1, idims[0], idims[2], idims[1]] )
+                                    input_catN = tf.reshape(
+                                        tf.transpose(input_tmp, [0, 2, 3, 1]),
+                                        [-1, np.prod(idims)])
+                                else:
+                                    input_catN = input_cat
+                            else:
+                                input_catN = input_cat
+                        else:
+                            input_catN = input_cat
 
                     # first argument for T/FFnetworks is inputs but it is input_network for scaffold
                     # so no keyword argument used below
-                    self.networks[nn].build_graph(input_cat, params_dict=self.network_list[nn],
+                    self.networks[nn].build_graph(input_catN, params_dict=self.network_list[nn],
                                                 batch_size=batch_size, use_dropout=use_dropout)
 
             # Define loss function
