@@ -40,7 +40,7 @@ def create_tikhonov_matrix(stim_dims, reg_type, boundary_conditions=None):
     """
 
     if boundary_conditions is None:
-        boundary_conditions = [True]*3
+        boundary_conditions = [False]*3
     else:
         if not isinstance(boundary_conditions, list):
             boundary_conditions = [boundary_conditions]*3
