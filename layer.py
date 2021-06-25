@@ -2088,26 +2088,10 @@ class MultLayer(Layer):
             num_inh=0,
             pos_constraint=None,
             log_activations=False):
-        """Constructor for sepLayer class
-
-        Args:
-            scope (str): name scope for variables and operations in layer
-            input_dims (int): dimensions of input data
-            output_dims (int): dimensions of output data
-            activation_func (str, optional): pointwise function applied to
-                output of affine transformation
-                ['relu'] | 'sigmoid' | 'tanh' | 'identity' | 'softplus' |
-                'elu' | 'quad'
-            normalize_weights (int): type of normalization to apply to the
-                weights. Default [0] is to normalize across the first dimension
-                (time/filters), but '1' will normalize across spatial
-                dimensions instead, and '2' will normalize both
-            reg_initializer (dict, optional): see Regularizer docs for info
-            num_inh (int, optional): number of inhibitory units in layer
-            pos_constraint (None, valued, optional): True to constrain layer weights to
-                be positive
-            log_activations (bool, optional): True to use tf.summary on layer
-                activations
+        """Constructor for MultLayer class: this takes two inputs of the same size M, which 
+        also must match the number of outputs (M). It applies weights w to the second input
+        and this is a multipler (with 1 added) to the first:
+        output = f[in1*(1+w*in2) + b]
         """
 
         # check for required inputs
