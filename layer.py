@@ -2120,7 +2120,10 @@ class MultLayer(Layer):
         assert num_input_streams == 2, 'Number of input streams for MultLayer must be 2.'
 
         # Input dims is just number of input streams
-        output_dims = [1] + input_dims[1:]  # constrained to be the same but collapsed first dim
+        if np.prod(input_dims[1:]) == 1:
+            output_dims = [num_outputs] + [1,1]  # this is kluge for non-conv: not sure which dim keeping track of
+        else: 
+            output_dims = [1] + input_dims[1:]  # convolutional
         input_dims = [num_input_streams, 1, 1]
         
         # can have overal weights, but not otherwise fit (so weight dims is output dims
