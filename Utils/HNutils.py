@@ -3,6 +3,7 @@
 #from __future__ import division
 #from __future__ import print_function
 import numpy as np
+from numpy.lib.arraysetops import setdiff1d
 import scipy.io as sio
 from copy import deepcopy
 import NDN3 
@@ -121,8 +122,10 @@ def train_test_assign( trial_ns, fold=4, use_random=True ):
         xtr = np.sort( trial_ns[ permu[range(np.floor(num_tr/fold).astype(int))] ]) 
         utr = np.sort( trial_ns[ permu[range(np.floor(num_tr/fold).astype(int), num_tr)] ])
     else:
-        xtr = trial_ns[np.array(range(fold//2, num_tr, fold), dtype='int32')]
-        utr = trial_ns[np.array(list(set(list(range(num_tr)))-set(xtr)), dtype='int32')]
+        xlist = np.arange(fold//2, num_tr, fold, dtype='int32')
+        ulist = np.setdiff1d(np.arange(num_tr), xlist)
+        xtr = trial_ns[xlist]
+        utr = trial_ns[ulist]
     return utr, xtr
 
 
