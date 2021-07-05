@@ -6,6 +6,7 @@ import NDN3.NDN as NDN
 import NDN3.NDNutils as NDNutils
 import matplotlib.pyplot as plt
 
+
 from copy import deepcopy
 from sklearn.preprocessing import normalize as sk_normalize
 
@@ -1156,9 +1157,77 @@ def figure_export( fig_handle, filename, bitmap=False, dpi=300):
     if bitmap, will use dpi and export as .png. Otherwise will export PDF"""
 
     if bitmap:
-        fig_handle.savefig( filename, bbox_inches='tight', dpi=dpi)
+        fig_handle.savefig( filename, bbox_inches='tight', dpi=dpi, transparent=True )
     else:
-        fig_handle.savefig( filename, bbox_inches='tight')
+        fig_handle.savefig( filename, bbox_inches='tight', transparent=True )
+
+
+def figure_format(
+    num_rows=1, num_cols=1, row_height=None, col_width=None, squares=False, 
+    xticks=True, yticks=True, xticklabels=True, yticklabels=True,
+    fig_handle = False):
+    """Format figure (and return figure handle) using default/desired appearance/size
+    Optional Input Arguments (all default values): 
+        num_rows [1]: number of rows in figure (assuming subplots, unless 1)
+        num_cols [1]: number of columns in figure
+        col_width: width of each column (in inches) 
+            [Default: if num_cols = 1, then 6. Otherwise divides up full width (16) between rows] 
+        row_height: height of row (in inches)
+            [Default: if num_rows = 1, then 4. Otherwise, 2/3 of col_width]
+        squares [False]: If set to true, makes all subplots the same horizontal/vertical
+            dimension, picking the minimum of row_height and col_width
+        xticks, yticks [True]: can turn off x-ticks or y-ticks by setting to False. Can also
+            directly make an array/list to explicitly set where ticks are
+        xticklabels, yticklabels [True]: same rules about xticks/yticks, applied to tick-labels
+        fig_handle [False]: whether to return a figure_handle
+    """
+    fig, ax = plt.subplots(nrows=num_rows, ncols=num_cols)
+    plt.tight_layout()
+    # Assume normal plot if num_rows_cols = 1 (6x4)
+    if col_width is None:
+        if num_cols == 1:
+            col_width = 6
+        else:
+            col_width = 16/num_cols
+    else:
+        col_width = np.minimum(16/num_cols, col_width)  # large number brings full column width
+    if row_height is None:
+        if num_rows == 1:
+            row_height = 4
+        else:
+            row_height = col_width*2/3
+    if squares:
+        col_width = np.minimum(col_width, row_height)
+        row_height = col_width
+    fig.set_size_inches(col_width*num_cols, row_height*num_rows) 
+    
+    # Axes
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    if type(xticks) == bool:
+        if not xticks:
+            ax.get_xaxis().set_ticks([])
+    else:
+        ax.get_xaxis().set_ticks(xticks)
+    if type(yticks) == bool:
+        if not yticks:
+            ax.get_yaxis().set_ticks([])
+    else:
+        ax.get_yaxis().set_ticks(yticks)
+
+    if type(xticklabels) == bool:
+        if not xticklabels:
+            ax.get_xaxis().set_ticklabels([])
+    else:
+        ax.get_xaxis().set_ticklabels(xticklabels)
+    if type(yticklabels) == bool:
+        if not yticklabels:
+            ax.get_yaxis().set_ticklabels([])
+    else:
+        ax.get_yaxis().set_ticklabels(yticks)
+
+    if fig_handle:
+        return fig
 
 
 def matlab_export(filename, variable_list):
