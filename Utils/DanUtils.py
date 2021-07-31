@@ -347,8 +347,8 @@ def unit_assign_reg( ndn_mod, reg_results ):
     Ntar = reg_results['targets'][0]
     Ltar = reg_results['targets'][1]
     rtype = reg_results['reg_type']
-    for aa in range(len(Ntar)):
-        for bb in range(len(Ltar)):
+    for aa in Ntar:
+        for bb in Ltar:
             new_ndn.networks[aa].layers[bb].convert_to_unit_regularization()
             new_ndn.networks[aa].layers[bb].reg.vals[rtype] = deepcopy(reg_results['opt_vals'])
     return new_ndn
