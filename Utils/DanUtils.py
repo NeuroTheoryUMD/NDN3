@@ -1200,31 +1200,34 @@ def figure_format(
         col_width = np.minimum(col_width, row_height)
         row_height = col_width
     fig.set_size_inches(col_width*num_cols, row_height*num_rows) 
-    
-    # Axes
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    if type(xticks) == bool:
-        if not xticks:
-            ax.get_xaxis().set_ticks([])
-    else:
-        ax.get_xaxis().set_ticks(xticks)
-    if type(yticks) == bool:
-        if not yticks:
-            ax.get_yaxis().set_ticks([])
-    else:
-        ax.get_yaxis().set_ticks(yticks)
 
-    if type(xticklabels) == bool:
-        if not xticklabels:
-            ax.get_xaxis().set_ticklabels([])
-    else:
-        ax.get_xaxis().set_ticklabels(xticklabels)
-    if type(yticklabels) == bool:
-        if not yticklabels:
-            ax.get_yaxis().set_ticklabels([])
-    else:
-        ax.get_yaxis().set_ticklabels(yticks)
+    # Axes
+    if num_rows*num_cols == 1:
+        ax = [ax]
+    for nn in range(len(ax)):
+        ax[nn].spines['top'].set_visible(False)
+        ax[nn].spines['right'].set_visible(False)
+        if type(xticks) == bool:
+            if not xticks:
+                ax[nn].get_xaxis().set_ticks([])
+        else:
+            ax[nn].get_xaxis().set_ticks(xticks)
+        if type(yticks) == bool:
+            if not yticks:
+                ax[nn].get_yaxis().set_ticks([])
+        else:
+            ax[nn].get_yaxis().set_ticks(yticks)
+
+        if type(xticklabels) == bool:
+            if not xticklabels:
+                ax[nn].get_xaxis().set_ticklabels([])
+        else:
+            ax[nn].get_xaxis().set_ticklabels(xticklabels)
+        if type(yticklabels) == bool:
+            if not yticklabels:
+                ax[nn].get_yaxis().set_ticklabels([])
+        else:
+            ax[nn].get_yaxis().set_ticklabels(yticks)
 
     if fig_handle:
         return fig
