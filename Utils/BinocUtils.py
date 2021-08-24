@@ -605,3 +605,64 @@ def binocular_data_import_cell( datadir, expt_num, cell_num ):
 
     return stim_all, Robs, used_cell, Ui, Xi, Einfo
 
+
+def monocular_data_import( datadir, exptn, time_shift=1, num_lags=20):
+    """
+    Usage: stim, Robs, DFs, used_inds, Eadd_info = binocular_data_import( datadir, expt_num )
+    Note: expt num is starting with 1
+    block_output determines whether to fit using block info, or used_inds info (derived from blocks)
+    num_lags is for purposes of used_inds
+    """
+    
+    l_files_to_use = np.add(list(range(16)), 1)  # good laminar-probe experiments
+    u_files_to_use = [1, 2, 5, 6, 12]  # good utah-array experiments
+    assert exptn <= len(l_files_to_use)+len(u_files_to_use), 'Expt number too high.'
+    if exptn <= len(l_files_to_use):
+        filename = 'expt'
+        ee = l_files_to_use[exptn-1]
+        is_utah = False
+    else:
+        filename = 'Uexpt'
+        #utah_array[nn] = True
+        ee = u_files_to_use[exptn-1 - len(l_files_to_use)]
+        is_utah = True
+    if ee < 10:
+        filename += '0'
+    filename += str(ee) + '.mat'         
+    matdata = sio.loadmat( datadir+filename )
+
+    sus = matdata['goodSUs'][:,0] - 1  # switch from matlab indexing
+    print('SUs:', sus)
+    NC = len(sus)
+    layers = matdata['layers'][0,:]
+    block_list = matdata['block_inds'] # note matlab indexing
+    stim_all = NDNutils.shift_mat_zpad(matdata['stimulus'], time_shift, 0)
+    NTtot, NX = stim_all.shape
+    DFs_all = deepcopy(matdata['data_filters'][:,sus])
+    Robs_all = deepcopy(matdata['binned_SU'][:,sus])
+    
+    # Break up into train and test blocks
+    # Assemble train and test indices based on BIlist
+    NBL = block_list.shape[0]
+    Xb = np.arange(2, NBL, 5)  # Every fifth trial is cross-validation
+    Ub = np.array(list(set(list(range(NBL)))-set(Xb)), dtype='int')
+    
+    # Make block indxs #used_inds = make_block_inds( block_list, gap=num_lags )
+    used_inds = []
+    for nn in range(block_list.shape[0]):
+        used_inds = np.concatenate( 
+            (used_inds, 
+            np.arange(block_list[nn,0]-1+num_lags, block_list[nn,1], dtype='int')),
+            axis=0)
+
+    #Ui, Xi = NDNutils.generate_xv_folds( len(used_inds) )
+    #Rinds, TEinds = used_inds[Ui].astype(int), used_inds[Xi].astype(int)
+
+    Eadd_info = {
+        'cortical_layer':layers, 
+        'used_inds': used_inds, 
+        'block_list': block_list}
+        #'TRinds':TRinds, 'TEinds': TEinds, 
+        #'TRblocks': Ub, 'TEblocks': Xb}
+    return stim_all, Robs_all, DFs_all, Eadd_info
+    
