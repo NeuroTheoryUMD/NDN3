@@ -1152,6 +1152,13 @@ def scaffold_plot_cell(side_ndn, cell_n, with_inh=True, nolabels=True, skip_firs
 
 
 ## RANDOM UTILITY FUNCTIONS
+def filename_num2str( n, num_digits=2 ):
+    num_places = int(np.ceil(np.log10(n)+0.001))
+    place_shift = int(np.maximum(num_digits-num_places, 0))
+    s = '0'*place_shift + str(n%(10**num_digits))[:]
+    return s
+
+    
 def figure_export( fig_handle, filename, bitmap=False, dpi=300):
     """Usage: figure_export( fig_handle, filename, variable_list, bitmap=False, dpi=300)
     if bitmap, will use dpi and export as .png. Otherwise will export PDF"""
