@@ -870,4 +870,7 @@ def assign_gpu(gpu_choice=None):
     print('*******************************************************************************************')
 
     print('\nDone!')
-    return pick_gpu_lowest_memory()
+    if gpu_choice is None:
+        return pick_gpu_lowest_memory()
+    else:
+        return gpu_choice
