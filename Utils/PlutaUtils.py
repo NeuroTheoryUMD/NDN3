@@ -287,6 +287,76 @@ def optim_params_generic(early_stopping=100, batch_size=8000, display_interval=1
     return adam_params, lbfgs_params
 
 
+def trial_plot_grant( Einfo, trial_n, predRS=None, predHT=None, predHM=None, T=1200, fighandle=False ):
+
+    import NDN3.Utils.DanUtils as DU
+    import matplotlib.pyplot as plt
+
+    f = DU.subplot_setup(5,2, fighandle=True) 
+    tax = 2*np.arange(T)    
+
+    if not isinstance(trial_n, list):
+        trial_n = [trial_n]
+
+    for nn in range(len(trial_n)):
+        ts = range(Einfo['blks'][trial_n[nn], 0], Einfo['blks'][trial_n[nn], 1])
+        ts = ts[:T]
+        pistons = interp_pistons(Einfo['piston'][trial_n[nn]])
+        outcome = interp_outcome(Einfo['outcome'][trial_n[nn]])
+        print('Tr%d: Piston config: '%trial_n[nn], pistons, outcome)
+
+    
+        # WHISKER ANGLES
+        clrs = 'brmc'
+        plt.subplot(5,2,nn+1)
+        wlist = []
+        for ww in range(4):
+            if pistons[ww] > 0:
+                plt.plot(tax, Einfo['angles'][ts,ww]*180/np.pi,clrs[ww])
+                plt.plot(tax, Einfo['angles'][ts,ww]*180/np.pi,clrs[ww])
+                wlist.append(ww)
+        plt.xlim([-50, 2*T+50])
+    
+        # WHISKERS INVOLVED
+        plt.subplot(5,2,3+nn)
+        for ww in range(4):
+            plt.plot(tax, 4-ww+0.8*Einfo['touches'][ts,ww], clrs[ww])
+        #plt.plot(1+0.8*Einfo['touches'][ts,wlist[1]], clrs[wlist[1]]) 
+        # homotopic touches
+        hmtouch = np.multiply(Einfo['touches'][ts,0], Einfo['touches'][ts,2]) + \
+                              np.multiply(Einfo['touches'][ts,1], Einfo['touches'][ts,3])
+        httouch = np.multiply(Einfo['touches'][ts,0], Einfo['touches'][ts,3]) + \
+                              np.multiply(Einfo['touches'][ts,1], Einfo['touches'][ts,2])
+        plt.plot(tax, 0.8*httouch, 'g')
+        plt.plot(tax, 0.8*hmtouch, 'r--')
+        plt.ylim([-0.2, 5])
+        plt.xlim([-50, 2*T+50])
+
+        # LICKS
+        plt.subplot(5,2,5+nn)
+        plt.plot(tax, Einfo['licks'][ts],'k')
+        plt.xlim([-50, 2*T+50])
+        plt.ylim([-0.1, 1.1])
+
+        # HT/HM pred
+        plt.subplot(5,2,7+nn)
+        #plt.plot(tax, HTpred[ts],'g')
+        #plt.plot(tax, HMpred[ts],'r')
+        plt.plot(tax, predHT[ts]-predHM[ts],'g')
+        plt.xlim([-50, 2*T+50])
+        plt.plot([tax[0], tax[-1]], [0,0],'k')
+
+        # RUN SPEED
+        plt.subplot(5,2,9+nn) 
+        plt.plot(tax, Einfo['runspeed'][ts],'k--')
+        if predRS is not None:
+            plt.plot(tax, predRS[ts],'b')
+        plt.xlim([-50, 2*T+50])
+        
+    plt.show()
+    if fighandle:
+        return f
+
 ######## Importing original data (pre-HDF5) ########
 def trial_parse( frames ):
     trial_starts = np.where(frames == 1)[0]
@@ -346,3 +416,39 @@ def process_locations( clocs ):
         ei = clocs[crange, :]
         electrode_info[hh] = ei[:, 1:]
     return num_cells, electrode_info
+
+
+def interp_pistons( pp ):
+    pinterp = [pp%2, (pp//2)%2, (pp//4)%2, pp//8] 
+    return( pinterp)
+
+
+def interp_outcome( oo ):
+    if oo == 1:
+        s = 'hit'
+    elif oo == 2:
+        s = 'miss'
+    elif oo == 3:
+        s = 'false alarm'
+    else:
+        s = 'correct reject'
+    return s
+
+def condition_LVs( LVs, valinds=None, mean_subtract=False ):
+    """Subtract mean and get variance = 1 for all LVs, for purposes of decoding"""
+    T, nLVs = LVs.shape
+    if valinds is None:
+        valinds = range(T)
+    cLVs = np.zeros(LVs.shape)
+    for nn in range(nLVs):
+        if np.var(LVs[:,nn]) == 0:
+            nrm = 1
+        else:
+            nrm = np.std(LVs[:,nn])
+        if mean_subtract:
+            mns = np.mean(LVs[:,nn])
+        else:
+            mns = np.min(LVs[:,nn])
+            
+        cLVs[:,nn] = (deepcopy(LVs[:,nn])-mns)/nrm
+    return cLVs

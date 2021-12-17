@@ -1158,6 +1158,14 @@ def filename_num2str( n, num_digits=2 ):
     s = '0'*place_shift + str(n%(10**num_digits))[:]
     return s
 
+
+def threeDmax(k):
+    a,b,c = k.shape
+    cbest = np.argmax( np.max(np.reshape(k, [a*b, c]), axis=0) )
+    bbest = np.argmax( np.max(k[:,:,cbest], axis=0) )
+    abest = np.argmax( k[:,bbest, cbest] )
+    return abest, bbest, cbest
+    
     
 def figure_export( fig_handle, filename, bitmap=False, dpi=300):
     """Usage: figure_export( fig_handle, filename, variable_list, bitmap=False, dpi=300)
