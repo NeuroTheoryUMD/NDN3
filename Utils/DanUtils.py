@@ -1285,6 +1285,23 @@ def load_python_data( filename, show_keys=False ):
     return data
 
 
+def display_matrix( x, prec=3, spacing=4, number_rows=False, number_cols=False ):
+    a, b = x.shape
+    s = "  %" + str(spacing+prec) + "." + str(prec) + "f"
+    if number_cols:
+        if number_rows:
+            print( "    ", end='')
+        for mm in range(b):
+            print( " "*(spacing+prec-2)+ "[%2d]"%mm, end='' )
+        print('')
+    for nn in range(a):
+        if number_rows:
+            print( "[%2d]"%nn, end='' )
+        for mm in range(b):
+            print( s%x[nn, mm], end='')
+        print('')
+
+        
 def entropy(dist):
 
     # normalize distribution
@@ -1369,3 +1386,51 @@ def gabor_array(dim, num_angles=6, both_phases=False):
             gabors[:, nn, 1] = np.reshape(gabor_sized(dim, nn*180/num_angles, 1), [L*L])
     
     return np.reshape(gabors, [L*L, num_gabors])
+
+
+def design_matrix_drift( NT, anchors, zero_left=True, zero_right=False, const_right=False, to_plot=False):
+    """Produce a design matrix based on continuous data (s) and anchor points for a tent_basis.
+    Here s is a continuous variable (e.g., a stimulus) that is function of time -- single dimension --
+    and this will generate apply a tent basis set to s with a basis variable for each anchor point. 
+    The end anchor points will be one-sided, but these can be dropped by changing "zero_left" and/or
+    "zero_right" into "True".
+
+    Inputs: 
+        NT: length of design matrix
+        anchors: list or array of anchor points for tent-basis set
+        zero_left, zero_right: boolean whether to drop the edge bases (default for both is False)
+    Outputs:
+        X: design matrix that will be NT x the number of anchors left after zeroing out left and right
+    """
+
+    if const_right:
+        zero_right = True
+
+    anchors = list(anchors)
+    if anchors[0] > 0:
+        anchors = [0] + anchors
+    if anchors[-1] < NT:
+        anchors = anchors + [NT]
+    NA = len(anchors)
+
+    X = np.zeros([NT, NA])
+    for aa in range(NA):
+        if aa > 0:
+            dx = anchors[aa]-anchors[aa-1]
+            X[range(anchors[aa-1], anchors[aa]), aa] = np.arange(dx)/dx
+        if aa < NA-1:
+            dx = anchors[aa+1]-anchors[aa]
+            X[range(anchors[aa], anchors[aa+1]), aa] = 1-np.arange(dx)/dx
+
+    if zero_left:
+        X = X[:, 1:]
+    if zero_right:
+        X = X[:, :-1]
+        if const_right:
+            X[range(anchors[-2], anchors[-1]), -1] = 1.0
+
+    if to_plot:
+        plt.imshow(X.T, aspect='auto', interpolation='none')
+        plt.show()
+
+    return X

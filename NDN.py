@@ -1506,7 +1506,7 @@ class NDN(object):
             train_indxs = np.arange(self.num_examples)
 
         # Check values entered
-        if learning_alg is 'adam':
+        if learning_alg == 'adam':
             if opt_params['epochs_ckpt'] is not None and output_dir is None:
                 raise ValueError('output_dir must be specified to save model')
             if opt_params['epochs_summary'] is not None and output_dir is None:
@@ -1603,9 +1603,9 @@ class NDN(object):
             # overwrite initialized values of network with stored values
             self._restore_params(sess, input_data, output_data, data_filters)
 
-            if self.data_pipe_type is 'data_as_var':
+            if self.data_pipe_type == 'data_as_var':
                 # select learning algorithm
-                if learning_alg is 'adam':
+                if learning_alg == 'adam':
                     if blocks is None:
                         epoch = self._train_adam(
                             sess=sess,
@@ -1631,16 +1631,16 @@ class NDN(object):
                             output_dir=output_dir,
                             silent=silent)
 
-                elif learning_alg is 'lbfgs':
+                elif learning_alg == 'lbfgs':
                     self.train_step.minimize(
                         sess, feed_dict={self.indices: train_indxs})
                     epoch = float('NaN')
                 else:
                     raise ValueError('Invalid learning algorithm')
 
-            elif self.data_pipe_type is 'feed_dict':
+            elif self.data_pipe_type == 'feed_dict':
                 # select learning algorithm
-                if learning_alg is 'adam':
+                if learning_alg == 'adam':
                     if blocks is None:
                         epoch = self._train_adam(
                             sess=sess,
@@ -1668,7 +1668,7 @@ class NDN(object):
                             output_dir=output_dir,
                             silent=silent)
 
-                elif learning_alg is 'lbfgs':
+                elif learning_alg == 'lbfgs':
                     feed_dict = self._get_feed_dict(
                         input_data=input_data,
                         output_data=output_data,  # this line needed?
@@ -1679,9 +1679,9 @@ class NDN(object):
                 else:
                     raise ValueError('Invalid learning algorithm')
 
-            elif self.data_pipe_type is 'iterator':
+            elif self.data_pipe_type == 'iterator':
                 # select learning algorithm
-                if learning_alg is 'adam':
+                if learning_alg == 'adam':
                     epoch = self._train_adam(
                         sess=sess,
                         train_writer=train_writer,
@@ -1695,7 +1695,7 @@ class NDN(object):
                         output_dir=output_dir,
                         silent=silent)
 
-                elif learning_alg is 'lbfgs':
+                elif learning_alg == 'lbfgs':
                     raise ValueError(
                         'Use of iterator pipeline with lbfgs not supported')
                 else:
@@ -2774,7 +2774,7 @@ class NDN(object):
         if 'epochs_ckpt' not in opt_params:
             opt_params['epochs_ckpt'] = None
 
-        if learning_alg is 'adam':
+        if learning_alg == 'adam':
             if 'learning_rate' not in opt_params:
                 opt_params['learning_rate'] = 1e-4
             if 'batch_size' not in opt_params:
