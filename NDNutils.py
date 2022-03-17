@@ -104,7 +104,7 @@ def ffnetwork_params(
     elif ffnet_n is None:
         TypeError('Must assign some input source.')
 
-    if network_type is 'side':
+    if network_type == 'side':
         xstim_n = None
 
     if ffnet_n is not None:
